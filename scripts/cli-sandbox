@@ -56,35 +56,43 @@ def run_shell_cmd(cmd):
         with open("/dev/null", "w") as ignore:
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=ignore)
     except Exception as e:
-        print("Failed to fetch op commands: {}", str(e))
-        return
+        print("Failed to fetch op commands: {}".format(e))
+        return ""
 
     while True:
         line = p.stdout.readline().decode()
-        if len(line) == 0 and p.poll() is not None:
-            break;
+        if not line and p.poll() is not None:
+            break
         line = line.strip()
-        return (line)
+        return line
+    return ""
 
 def remove_native_op_cmds(chroot):
-    cmd = ['/opt/vyatta/sbin/lu', '-user', 'configd', '/opt/vyatta/bin/opc',  '-op', 'complete']
+    cmd = ['/opt/vyatta/sbin/lu', '-user', 'configd', '/opt/vyatta/bin/opc', '-op', 'complete']
     out = run_shell_cmd(cmd)
+    if not out:
+        return
+
     os.environ["PATH"] = '/usr/local/bin:/usr/bin:/bin:/opt/vyatta/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/vyatta/sbin'
-    if out is not None:
-        ops = re.search(r'\((.*?)\)', out).group(1).split(' ')
-        for i in range(len(ops)):
-            try:
-                if ops[i] != '' and eval(ops[i]) != 'configure':
-                    cmd = ['which', eval(ops[i])]
-                    out = run_shell_cmd(cmd)
-                    if out is not None:
-                        out = chroot + out
-                        os.remove(out)
-                        # link to non-existing file under read only directory
-                        os.symlink('/var/run/vyatta/.does_not_exist', out)
-            except OSError as e:
-                print("Exception when removing native op commands: {}", str(e))
-                pass
+    ops = re.search(r'\((.*?)\)', out).group(1).split(' ')
+    for op in ops:
+        op = op.strip("'")
+        try:
+            if not op or op == 'configure':
+                continue
+
+            cmd = ['which', op]
+            out = run_shell_cmd(cmd)
+            if not out:
+                continue
+
+            out = chroot + out
+            if os.path.isfile(out):
+                os.remove(out)
+                # link to non-existing file under read only directory
+                os.symlink('/var/run/vyatta/.does_not_exist', out)
+        except OSError as e:
+            print("Exception when removing native op commands: {}".format(e))
 
 class UserSandBox:
     """Sandbox class"""

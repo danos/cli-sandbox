@@ -8,6 +8,7 @@ PrivateUsers=no
 BindReadOnly=/run/vyatta/configd
 BindReadOnly=/run/vyatta/opd
 BindReadOnly=/var/lib/sss/pipes
+BindReadOnly=/etc/default/locale
 BindReadOnly=/etc/passwd
 BindReadOnly=/etc/shadow
 BindReadOnly=/etc/group

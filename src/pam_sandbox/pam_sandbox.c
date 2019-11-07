@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019, AT&T intellectual property. All rights reserved.
+ * Copyright (c) 2018-2019, AT&T Intellectual Property. All rights reserved.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -179,7 +179,7 @@ static int enter_sandbox(pam_handle_t * pamh, const char *user)
 		pam_syslog(pamh, LOG_ERR, "failed to get user's container\n");
 		goto out;
 	}
-	pam_syslog(pamh, LOG_INFO, "%s login enteing sandbox %s(leader=%d)\n",
+	pam_syslog(pamh, LOG_INFO, "%s login entering sandbox %s(leader=%d)\n",
 		   user, info.name, info.leader);
 
 	hostname[sizeof(hostname) - 1] = '\0';
@@ -418,7 +418,7 @@ get_machine_info(pam_handle_t * pamh, sd_bus * bus, const char *name,
  err:
 	free(path);
 	free_sandbox_info(info);
-	return -1;
+	return r;
 
 }
 
@@ -438,8 +438,11 @@ bus_get_machine_path(pam_handle_t * pamh, sd_bus * bus, const char *name,
 			       name);
 
 	if (r < 0) {
-		pam_syslog(pamh, LOG_ERR, "Failed to get machine for %s: %s\n",
-			   name, e.message);
+		/* No device (ENXIO) is expected on 1st access to sandbox */
+		if (r != -ENXIO)
+			pam_syslog(pamh, LOG_ERR,
+				   "Failed to get machine for %s: %s (%d)\n",
+				   name, e.message, r);
 		goto out;
 	}
 	/*
@@ -454,7 +457,7 @@ bus_get_machine_path(pam_handle_t * pamh, sd_bus * bus, const char *name,
  out:
 	sd_bus_error_free(&e);
 	sd_bus_message_unref(m);
-	return r < 0 ? -1 : 0;
+	return r < 0 ? r : 0;
 }
 
 static int
@@ -562,8 +565,10 @@ get_sandbox(pam_handle_t * pamh, const char *mach, const char *svc,
 		r = get_machine_info(pamh, bus, mach, info);
 		if (r == 0)
 			break;
-		pam_syslog(pamh, LOG_ERR,
-			   "get_machine_info failed - starting the unit\n");
+		/* No device (ENXIO) is expected on 1st access to sandbox */
+		if (r != -ENXIO)
+			pam_syslog(pamh, LOG_ERR,
+				   "get_machine_info failed - starting unit\n");
 		if (!service_queued) {
 			r = bus_start_unit(pamh, bus, svc);
 			if (r < 0)
