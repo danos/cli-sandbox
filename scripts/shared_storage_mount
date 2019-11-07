@@ -1,0 +1,137 @@
+#!/usr/bin/python3
+# Copyright (c) 2019 AT&T intellectual property.
+# All rights reserved
+#
+# SPDX-License-Identifier: GPL-2.0-only
+
+"""Tool to reload mounts.
+shared_storage_mount:
+This should only be called from a systemd service.
+The current states of mounted file systems are stored in SHARED_MOUNT_STATE.
+The current configuration SHARED_RUN_CONF is compared against the current
+STATE and shared mountes are mounted/unmounted.
+ Configuration files:
+   SHARED_RUN_CONF is where configured mounts and directories are stored
+   SHARED_MOUNT_STATE is where mounted files are stored. This is used for
+   unmounting.
+"""
+
+import os
+import sys
+import grp
+from vyatta.shared_storage import SharedStorage, SharedStorageError, mkdir_p, cmd_run
+
+SHARED_RUN_CONF = '/run/vyatta/shared_storage/shared_storage.conf'
+SHARED_MOUNT_STATE = '/run/vyatta/shared_storage/shared_mount.conf'
+VYATTA_CFG_GRP = 'vyattacfg'
+
+def vyattacfg_chgrp(path):
+    """change the group to vyattacfg"""
+    try:
+        cfggrp = grp.getgrnam(VYATTA_CFG_GRP)
+        os.chown(path, 0, cfggrp.gr_gid)
+        os.chmod(path, 0o775)
+    except (OSError, KeyError) as exc: # ignore no existing group
+        print("Error: {}".format(str(exc)), file=sys.stderr)
+
+def create_new_fs(path, fname, size):
+    """create a sparse file and mkfs. The imagename file
+    must not exist"""
+    if not fname or not size:
+        raise SharedStorageError("create_new_fs: no files or size")
+    try:
+        mkdir_p(os.path.dirname(fname))
+        with open(fname, 'x') as imgf:
+            imgf.truncate(size*1024*1024)
+            os.fsync(imgf.fileno())
+            mkfs = ['/sbin/mkfs.ext4', '-L', os.path.basename(path), fname]
+            cmd_run(mkfs)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise SharedStorageError("Falied to create backing file at {}:{}".format(fname, str(exc)))
+
+def do_mount(path, info):
+    """mount shared storage at path. All path should have been
+    checked before"""
+    what = info['what']
+    if os.path.ismount(path):
+        raise SharedStorageError("Can't mount on a mount point")
+    mkdir_p(path)
+    if os.listdir(path):
+        raise SharedStorageError("can't mount on a non-empty directory")
+    create_new_fs(path, what, info['size'])
+    if not os.path.isfile(what):
+        raise SharedStorageError("can't mount on something that is not a file")
+    opts = ['loop', 'nodev', 'nosuid', 'sync']
+    if info['perm'] == 'r':
+        opts.append('ro')
+    if not info['exec']:
+        opts.append('noexec')
+    opt_str = ','.join(opts)
+    cmd = ['/bin/mount', '-t', 'ext4', '-o', opt_str, what, path]
+    cmd_run(cmd)
+    vyattacfg_chgrp(path)
+
+def clean_up_shared_storage(path, info):
+    """clean up a shared storage mount
+    unmount (lazy), remove directory, remove the backing file"""
+    if os.path.ismount(path):
+        cmd = ['/bin/umount', '-l', path]
+        cmd_run(cmd)
+        try:
+            os.rmdir(path)
+        except OSError as exc:
+            print("failed to remove {}:{}", path, str(exc))
+    if os.path.isfile(info['what']):
+        os.remove(info['what'])
+
+def reload_shared_mounts(cfgfile, statefile):
+    """Compare cfgfile and statefile.
+    mount files that are in cfgfile but not in statefile
+    umount files that in statefile but not in cfgfile.
+    ignore changed mounts - would be taken care at next
+    boot"""
+    state = SharedStorage()
+    new = SharedStorage()
+
+    state.load(conf_file=statefile)
+    new.load(conf_file=cfgfile)
+
+    del_list = []
+    cur_real_mounts = state.get_current_mounts()
+
+    for path in cur_real_mounts:
+        if path in new.mounts:
+            continue
+        del_list.append(path)
+    for path in del_list:
+        try:
+            clean_up_shared_storage(path, state.mounts[path])
+            cur_real_mounts.discard(path)
+        except SharedStorageError as exc:
+            print("Failed to cleaup shared storage {}:{}".format(path, str(exc)), file=sys.stderr)
+    new_mounts = {}
+    for path, info in new.mounts.items():
+        if path in cur_real_mounts:
+            new_mounts[path] = info
+            continue
+        try:
+            do_mount(path, info)
+            new_mounts[path] = info
+        except SharedStorageError as exc:
+            print("Failed to mount {}:{}".format(path, str(exc)), file=sys.stderr)
+    new_state = SharedStorage()
+    new_state.validate_and_add_mounts(new_mounts)
+    new_state.write(statefile)
+
+def main():
+    try:
+        reload_shared_mounts(SHARED_RUN_CONF, SHARED_MOUNT_STATE)
+        sys.exit(0)
+    except SharedStorageError as exc:
+        print("Error during shared_storage reload:{}", str(exc))
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()

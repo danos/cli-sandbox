@@ -1,0 +1,2 @@
+lib/security/pam_sandbox.so
+opt/vyatta/share/pam-configs/sandbox

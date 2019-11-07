@@ -1,0 +1,124 @@
+#!/usr/bin/python3
+# Copyright (c) 2019 AT&T intellectual property.
+# All rights reserved
+#
+# SPDX-License-Identifier: GPL-2.0-only
+
+"""
+vyatta_shared_storage:
+Tool to update and query vyatta_shared_storage
+ 'vyatta_shared_storage --update' : stores vyatta configuration into
+ systems configuration file.
+ 'vyatta_shared_storage --check r|rw /config/user-data/shared_file'
+ checks if the requested read or write access is allowed for the path.
+ Configuration files:
+   SHARED_RUN_CONF is where configured mounts and directories are stored
+   SHARED_STATIC_CONF is for statically configuring some shares and will
+   be checked. This is mostly for backward compatibility to allow access
+   /var/lib/libvirt/images to copy etc. commands.
+   Only on VNF installation this file should be populated.
+"""
+
+import sys
+import subprocess
+from argparse import ArgumentParser
+from vyatta import configd
+from vyatta.shared_storage import SharedStorage, SharedStorageError, get_backing_file_name
+
+SHARED_STATIC_CONF = '/etc/vyatta/shared_storage/allowed_dirs.conf'
+SHARED_RUN_CONF = '/run/vyatta/shared_storage/shared_storage.conf'
+FS_IMAGE_PATH = '/config/shared_storage'
+SHARED_STORAGE_SERVICE = 'shared_storage.service'
+
+def update_shared_storage(ss_conf, cfg):
+    run_conf = SharedStorage()
+    run_conf.load(conf_file=SHARED_RUN_CONF)
+
+    for path, info in cfg.items():
+        check_path_size(run_conf, path, info['size'])
+        fname = get_backing_file_name(FS_IMAGE_PATH, path)
+        try:
+            ss_conf.add_mount(path, 'rw', fname, info['size'], 'allow-exec' in info)
+        except SharedStorageError as exc:
+            print(str(exc), file=sys.stderr)
+
+def update_directories(ss_conf, cfg):
+    for path in cfg:
+        try:
+            ss_conf.add_dir(path, 'r')
+        except SharedStorageError as exc:
+            print(str(exc), file=sys.stderr)
+
+def update_config():
+    """Store vyatta configuration to shared_storage configuration file"""
+    try:
+        cfgcl = configd.Client()
+        cfg = cfgcl.tree_get_dict('system login user-isolation',
+                                  database=cfgcl.AUTO, encoding='internal')
+        cfg = cfg['user-isolation']
+    except (configd.Exception, KeyError):
+        cfg = {}
+    except configd.FatalException as exc:
+        print("Can't connect to configed: {}".format(str(exc)))
+        sys.exit(1)
+
+    ss_conf = SharedStorage()
+    if 'shared-storage' in cfg:
+        update_shared_storage(ss_conf, cfg['shared-storage'])
+    if 'read-only-directory' in cfg:
+        update_directories(ss_conf, cfg['read-only-directory'])
+    ss_conf.write(SHARED_RUN_CONF)
+    subprocess.run(['systemctl', 'reload-or-restart', 'shared_storage.service'])
+
+def check_path_one(cfile, path, mode):
+    """Check if access is allowed to path in a particular conf"""
+    ss_conf = SharedStorage()
+    ss_conf.load(conf_file=cfile)
+    return ss_conf.is_access_allowed(path, mode)
+
+def check_path(path, mode):
+    """Check if access is allowed to path"""
+    for cfile in [SHARED_RUN_CONF, SHARED_STATIC_CONF]:
+        if check_path_one(cfile, path, mode):
+            return True
+    return False
+
+def check_path_size(ss_conf, path, size):
+    """Check if shared storage size is being changed"""
+    try:
+        if size != ss_conf.mounts[path]["size"]:
+            print ("Shared storage " + path + " size cannot be changed.")
+    except KeyError:
+        pass
+
+def main():
+    parser = ArgumentParser(description="Vyatta Shared Storage Management Tool")
+    parser.add_argument("-u",
+                        '--update',
+                        help='update configuration file at commit',
+                        action='store_true')
+    parser.add_argument('-c',
+                        '--check',
+                        nargs=1,
+                        choices=['r', 'rw'],
+                        help="check read/read-write permission")
+    parser.add_argument('path', nargs='?', help="check permission for this path")
+    args = parser.parse_args()
+    if args.update:
+        if args.check or args.path:
+            parser.print_help()
+            sys.exit(1)
+        update_config()
+        sys.exit(0)
+
+    if args.check:
+        if check_path(args.path, args.check[0]):
+            print("allowed")
+            sys.exit(0)
+        else:
+            print("not-allowed")
+            sys.exit(1)
+    sys.exit(0)
+
+if __name__ == '__main__':
+    main()

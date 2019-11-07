@@ -1,0 +1,45 @@
+Source: cli-sandbox
+Section: contrib/net
+Priority: optional
+Maintainer: Vyatta Package Maintainers <DL-vyatta-help@att.com>
+Build-Depends: debhelper (>= 9),
+ dh-yang,
+ dh-python,
+ python3-all,
+ python3-setuptools,
+ shellcheck,
+ libsystemd-dev,
+ pkg-config,
+ libpam0g-dev,
+ debhelper (>= 9.20160709) | dh-systemd (>= 1.5)
+Standards-Version: 3.9.8
+
+Package: python3-shared-storage
+Architecture: all
+Depends: python3 (>= 3.5), ${python3:Depends}, ${misc:Depends}
+Description: Python3 module for managing shared storage
+ This package provides function to manage shared mounts
+ and directories
+
+Package: cli-sandbox
+Architecture: all
+Depends: systemd-container,
+ python3 (>= 3.5),
+ python3-shared-storage,
+ ${python3:Depends},
+ ${misc:Depends},
+Description: Systemd nspawn services for the login session sandbox
+ create a sandbox for the user's login sessions.
+
+Package: pam-sandbox
+Architecture: any
+Depends: cli-sandbox, ${shlibs:Depends}, ${misc:Depends}
+Description: PAM module for user sandboxing
+ This package provides the pam-sandbox module that can be used
+ to sandbox user's login sessions
+
+Package: vyatta-system-login-user-isolation-v1-yang
+Architecture: all
+Depends: pam-sandbox, cli-sandbox, ${yang:Depends}, ${misc:Depends}
+Description: yang module for vyatta-user-isolation
+ This package provides the user isolation configuration

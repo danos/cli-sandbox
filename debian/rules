@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+DPKG_EXPORT_BUILDFLAGS=1
+
+include /usr/share/dpkg/default.mk
+
+%:
+	dh $@ --with=yang --with=systemd --with=python3
+
+override_dh_auto_test:
+	shellcheck tmplscripts/system/login/user_isolation.sh
+	shellcheck scripts/cli_sandbox_init
+
+override_dh_systemd_enable:
+	dh_systemd_enable -p cli-sandbox --name=cli-sandbox@
+	dh_systemd_enable -p cli-sandbox --name=shared_storage

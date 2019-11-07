@@ -1,0 +1,8 @@
+Name: Change Namespace
+Default: yes
+Priority: -100
+
+Session-Type: Additional
+Session-Interactive-Only: yes
+Session:
+	required		pam_sandbox.so

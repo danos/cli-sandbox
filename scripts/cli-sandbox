@@ -1,0 +1,203 @@
+#!/usr/bin/python3
+# Copyright (c) 2019 AT&T intellectual property.
+# All rights reserved
+#
+# SPDX-License-Identifier: GPL-2.0-only
+
+"""Create or destroy a sandbox for login sessions.
+The sandbox is created per user and this script is
+intended and must be called from the systemd service
+cli-sandbox@.service.
+"""
+
+import sys
+import os
+from argparse import ArgumentParser
+import subprocess
+import shutil
+import pwd
+import re
+from vyatta.shared_storage import SharedStorage
+
+SANDBOX_DEFAULTS = {
+    'DISTDIR': '/var/lib/sandbox',
+    'RUNDIR': '/run/cli-sandbox',
+    'NSPAWN_TEMPLATE': '/etc/cli-sandbox/nspawn-templates/cli_sandbox.nspawn',
+    'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
+    'SETTINGS_DIR': '/run/systemd/nspawn',
+    }
+
+# Shared Storage configuration file
+SHARED_RUN_CONF = '/run/vyatta/shared_storage/shared_storage.conf'
+
+# Rootfs overlay isn't going io contain much data, as most of the cotains is from
+# the read-only rootfs under directory. It is going to contain only a few states
+# information and few scripts that are pulled it in runtime.
+ROOT_TMP_FS_MAX = '1m'
+
+# Used by call to sb_run(cmd, IGNORE) when we want ignore the results of a command
+IGNORE = True
+def sb_run(cmd, ignore=False):
+    """run a command"""
+    try:
+        subprocess.run(cmd, check=(not ignore))
+    except subprocess.CalledProcessError as err:
+        print('Failed: {}:{}'.format(' '.join(cmd), str(err)), file=sys.stderr)
+        sys.exit(1)
+
+def get_current_shares():
+    """get currenly mounted shares from conf"""
+    ss_conf = SharedStorage()
+    ss_conf.load(conf_file=SHARED_RUN_CONF)
+    return ss_conf.get_current_mounts()
+
+def run_shell_cmd(cmd):
+    try:
+        with open("/dev/null", "w") as ignore:
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=ignore)
+    except Exception as e:
+        print("Failed to fetch op commands: {}", str(e))
+        return
+
+    while True:
+        line = p.stdout.readline().decode()
+        if len(line) == 0 and p.poll() is not None:
+            break;
+        line = line.strip()
+        return (line)
+
+def remove_native_op_cmds(chroot):
+    cmd = ['/opt/vyatta/sbin/lu', '-user', 'configd', '/opt/vyatta/bin/opc',  '-op', 'complete']
+    out = run_shell_cmd(cmd)
+    os.environ["PATH"] = '/usr/local/bin:/usr/bin:/bin:/opt/vyatta/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/vyatta/sbin'
+    if out is not None:
+        ops = re.search(r'\((.*?)\)', out).group(1).split(' ')
+        for i in range(len(ops)):
+            try:
+                if ops[i] != '' and eval(ops[i]) != 'configure':
+                    cmd = ['which', eval(ops[i])]
+                    out = run_shell_cmd(cmd)
+                    if out is not None:
+                        out = chroot + out
+                        os.remove(out)
+                        # link to non-existing file under read only directory
+                        os.symlink('/var/run/vyatta/.does_not_exist', out)
+            except OSError as e:
+                print("Exception when removing native op commands: {}", str(e))
+                pass
+
+class UserSandBox:
+    """Sandbox class"""
+    conf = {k: os.environ.get(k, v) for k, v in SANDBOX_DEFAULTS.items()}
+    def __init__(self, name):
+        self.name = name
+        self.machine = 'cli-' + name
+        self.topdir = os.path.join(self.RUNDIR, name)
+        self.settings = os.path.join(self.SETTINGS_DIR, self.machine + '.nspawn')
+        self.root = os.path.join(self.topdir, self.machine)
+        self.pw_entry = pwd.getpwnam(name)
+
+    def __getattr__(self, field):
+        return self.conf[field]
+
+    def edit_nspawn_template(self):
+        """create nspawn settings file.
+        Add extra bind mounts for Home directory and shared-storage mounts
+        in a separte [Files] section of nspawn settings file.
+        """
+        if not os.path.isdir(os.path.dirname(self.settings)):
+            os.mkdir(os.path.dirname(self.settings), 0o755)
+        shutil.copy2(self.NSPAWN_TEMPLATE, self.settings)
+        bindfmt = "Bind={}\n"
+        with open(self.settings, 'a') as fout:
+            fout.write("\n[Files]\n")
+            fout.write(bindfmt.format(self.pw_entry.pw_dir))
+            for shared_dir in get_current_shares():
+                fout.write(bindfmt.format(shared_dir))
+
+    def create_sandbox(self):
+        """create and setup sandbox rootfs"""
+        self.edit_nspawn_template()
+        os.makedirs(self.topdir)
+        mntcmd = ['/bin/mount', '-t', 'tmpfs',
+                  '-o', 'size=' + ROOT_TMP_FS_MAX,
+                  'tmpfs', self.topdir
+                 ]
+        sb_run(mntcmd)
+        os.mkdir(self.root)
+        upper = os.path.join(self.topdir, 'empty')
+        work = os.path.join(self.topdir, 'work')
+        os.mkdir(work)
+        os.mkdir(upper)
+        mntcmd = ['/bin/mount', '-t', 'overlay',
+                  '-o', 'lowerdir={},upperdir={},workdir={}'.format(self.DISTDIR, upper, work),
+                  'overlayfs',
+                  self.root,
+                 ]
+        sb_run(mntcmd)
+        remove_native_op_cmds(self.root)
+        shutil.copy2(self.INIT2, self.root)
+        os.chmod(os.path.join(self.root, os.path.basename(self.INIT2)), 0o755)
+        os.mkdir(os.path.join(self.root, '.mounts'), 0o700)
+        hname = os.uname()[1]
+        with open(os.path.join(self.root, 'hostname.sandbox'), 'w') as outfile:
+            print(hname, file=outfile)
+
+    def destroy_sandbox(self):
+        """cleanup sandbox rootfs"""
+        if os.path.isdir(self.root) and os.path.ismount(self.root):
+            sb_run(['/bin/umount', self.root], IGNORE)
+        if os.path.isdir(self.topdir) and os.path.ismount(self.topdir):
+            sb_run(['/bin/umount', self.topdir], IGNORE)
+            try:
+                os.rmdir(self.topdir)
+            except OSError as exc:
+                print("Failed to remove {}:{}", self.topdir, str(exc))
+        if os.path.exists(self.settings):
+            try:
+                os.remove(self.settings)
+            except OSError as exc:
+                print("Failed to remove {}:{}", self.settings, str(exc))
+
+def main():
+    """Main cli-sandbox Program"""
+    parser = ArgumentParser(description='Vyatta CLI Sanbox Service Rootfs Setup tool')
+    parser.add_argument('-c',
+                        '--create',
+                        help='create temporary rootfs for sandbox',
+                        action='store_true'
+                       )
+    parser.add_argument('-d',
+                        '--destroy',
+                        help='destroy temporary rootfs for sandbox',
+                        action='store_true'
+                       )
+    parser.add_argument('name', nargs=1, help='sandbox name')
+
+    args = parser.parse_args()
+
+    if args.create == args.destroy:
+        print('Must specifiy exactly one of --create or --destroy', file=sys.stderr)
+        parser.print_help()
+        sys.exit(1)
+
+    sandbox = UserSandBox(args.name[0])
+
+    if args.create:
+        try:
+            sandbox.create_sandbox()
+            sys.exit(0)
+        except OSError as err:
+            print('Failed to create sandbox {}:{}'.format(sandbox.name, str(err)))
+            sys.exit(1)
+
+    if args.destroy:
+        try:
+            sandbox.destroy_sandbox()
+            sys.exit(0)
+        except OSError as err:
+            print('Failed to cleanup sandbox {}:{}'.format(sandbox.name, str(err)))
+            sys.exit(1)
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,152 @@
+module vyatta-system-login-user-isolation-v1 {
+	namespace "urn:vyatta.com:mgmt:vyatta-system-login-user-isolation:1";
+	prefix vyatta-system-login-user-isolation-v1;
+
+	import vyatta-system-v1 {
+		prefix system;
+	}
+	import vyatta-system-login-v1 {
+		prefix system-login;
+	}
+	import configd-v1 {
+		prefix configd;
+	}
+
+	organization "AT&T Inc.";
+	contact
+		"AT&T
+		Postal: 208 S. Akard Street
+		Dallas, TX 25202
+		Web: www.att.com";
+
+	description
+		"Copyright (c) 2018,2019 AT&T Intellectual Property.
+		All rights reserved.
+
+		 Redistribution and use in source and binary forms, with or
+		 without modification, are permitted provided that the following
+		 conditions are met:
+
+		 1. Redistributions of source code must retain the above copyright
+			notice, this list of conditions and the following disclaimer.
+		 2. Redistributions in binary form must reproduce the above
+			copyright notice, this list of conditions and the following
+			disclaimer in the documentation and/or other materials provided
+			with the distribution.
+		 3. Neither the name of the copyright holder nor the names of its
+			contributors may be used to endorse or promote products derived
+			from this software without specific prior written permission.
+
+		 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+		 'AS IS' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+		 LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+		 FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+		 COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+		 INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+		 BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+		 LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+		 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+		 LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+		 ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+		 POSSIBILITY OF SUCH DAMAGE.
+
+		 SPDX-License-Identifier: BSD-3-Clause
+
+		The YANG module for the User Isolation configuration.
+
+		The User Isolation feature isolates operator and admin login
+		sessions in a sandboxed restricted environment.";
+
+	revision 2019-02-19 {
+		description "Added shared-storage and read-only-directory nodes.";
+	}
+	revision 2018-10-29 {
+		description "Initial revision.";
+	}
+
+	typedef os-path-type {
+		type string {
+			length	"1..1024";
+			pattern "(/[-_.0-9A-Za-z]+)+" {
+				error-message "Absolute path with no trailing '/'. Only alpha-numeric," +
+				"'-', '_' and '.' characters are allowed in path components.";
+			}
+		}
+	}
+
+	augment /system:system/system-login:login {
+		container user-isolation {
+			description
+				"User isolation configuration for operator and admin level users.";
+			configd:help "User isolation configuration";
+			configd:end  "/opt/vyatta/sbin/vyatta_shared_storage --update";
+			leaf disable {
+				description
+					"Disable User isolation for operator and admin level users.";
+				configd:help "Disable User isolation for operator and admin level users.";
+				type empty;
+				configd:create "/opt/vyatta/share/tmplscripts/system/login/user_isolation.sh disable";
+				configd:delete "/opt/vyatta/share/tmplscripts/system/login/user_isolation.sh enable";
+			}
+			list shared-storage {
+				description
+					"Configure shared storage. These are virtual storage mounted on directories and are accessible
+					 to the isolated operator and admin level users. At the time of configuration these directories
+					 must be empty. Users should logout from all of their login sessions for these configurations
+					 to take effect.";
+				configd:help "Configure shared directories.";
+				key "path";
+				leaf path {
+					description
+						"Directory path where the shared storage will be mounted.";
+					configd:help "Shared directory path.";
+					type os-path-type;
+					must "count(../../shared-storage[starts-with(path, concat(current(), '/'))]) = 0" {
+						error-message "Path must not be a subdirectory of another.";
+					}
+					must "not(starts-with(., '../') or contains(., '/../') or (substring(., string-length(.) - 3, 3) = '/..'))" {
+						error-message "Path must not contain '..'";
+					}
+					must "not(starts-with(., './') or contains(., '/./') or (substring(., string-length(.) - 2, 2) = '/.'))" {
+						error-message "Path must not contain './'";
+					}
+					must "(. = '/config/user-data')	or starts-with(., '/config/user-data/')"
+					{
+						error-message "Only /config/user-data or its subdirectories may be used for shared storage";
+					}
+				}
+				leaf size {
+					description
+						"Maximum size of shared storage.";
+					configd:help "Maximum size of shared storage.";
+					mandatory true;
+					type uint32 {
+						range "1..8192";
+					}
+					units "megabytes";
+				}
+				leaf allow-exec {
+					description
+						"Allow executions of programs in this directory.";
+					configd:help "Allow executions of programs in this directory.";
+					type empty;
+				}
+			}
+			leaf-list read-only-directory {
+				description
+					"Allow 'copy file' and 'show file' commands to have read only access to the directory.";
+				configd:help "Allow 'copy file' and 'show file' commands to have read only access to the directory.";
+				type os-path-type;
+				must "count(../read-only-directory[starts-with(path, concat(current(), '/'))]) = 0" {
+					error-message "Path must not be a subdirectory of another";
+				}
+				must "not(starts-with(., '../') or contains(., '/../') or (substring(., string-length(.) - 3, 3) = '/..'))" {
+					error-message "Path must not contain '..'";
+				}
+				must "not(starts-with(., './') or contains(., '/./') or (substring(., string-length(.) - 2, 2) = '/.'))" {
+					error-message "Path must not contain './'";
+				}
+			}
+		}
+	}
+}

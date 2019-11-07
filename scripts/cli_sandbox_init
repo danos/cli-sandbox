@@ -1,0 +1,152 @@
+#!/bin/bash
+# Copyright (c) 2018 AT&T intellectual property.
+# All rights reserved
+#
+# SPDX-License-Identifier: GPL-2.0-only
+
+
+# Watch any process that are present in the /proc
+# Ignore pid 1 and 2 as these are the STUB and this process.
+# This is run as ProcessTwo in the container.
+
+
+shopt -s nullglob
+check_processes()
+{
+	cur="$(pwd)"
+	local -a proc_list
+	cd "${1:-.}" || return 1
+	proc_list=( [1-9]* )
+	cd "${cur}" || return 1
+	# we must have two processes when idle. In
+	# other cases we will have more than two processes.
+	[[ "${#proc_list[@]}" -lt 3 ]] && return 1
+	return 0
+}
+
+# wait for processes for a limited time.
+# returns success (0) if there are processes
+# and fails when there are no processes.
+# takes two arguments delay and count
+wait_for_processes()
+{
+	local delay
+	local -i count
+
+	delay=${1:-0.5}
+	count=${2:-120}
+	while :; do
+		check_processes /proc && return 0
+		count=$(( count - 1 ))
+		(( count == 0)) && break
+		sleep "${delay}"
+	done
+	return 1
+}
+
+# wait until all processes left the sandbox
+# returns success (0) if there are processes
+# and fails when there are no processes.
+# takes two arguments delay and count
+wait_for_idle()
+{
+	local delay
+	local -i count
+	local -i idle_count
+
+	delay=${1:-1}
+	idle_count=${2:-1}
+	while :; do
+		while check_processes /proc; do
+			sleep "${delay}"
+		done
+		count=${idle_count}
+		while :; do
+			check_processes /proc && break
+			echo "No process count=${count}"
+			count=$(( count - 1 ))
+			(( count == 0 )) && return
+			sleep "${delay}"
+		done
+
+	done
+}
+
+check_and_sethostname()
+{
+	[ -s /hostname.sandbox ] || return
+	local hname
+	local orig
+
+	orig="$(hostname)"
+	hname="$(< /hostname.sandbox)"
+
+	[ "$orig" != "$hname" ] || return
+	hostname "$hname"
+}
+
+# Move mounts that can't be directly bind mounted by systemd nspawn
+# before launching the sandbox
+move_mounts()
+{
+	for m in "$@"; do
+		s="${m//\//_}"
+		s="/.mounts/${s}"
+
+		mountpoint -q "$s" || continue
+
+		if [ -e "$m" ]; then
+			mountpoint -q "$m" && umount "$m"
+			if [ -d "$m" ]; then
+				rmdir "$m"
+			else
+				rm -f "$m"
+			fi
+		fi
+		if [ -d "$s" ]; then
+			mkdir -p "$m"
+		else
+			d=$(dirname "$m")
+			[ -d "$d" ] || mkdir -p "$d"
+			touch "$m"
+		fi
+		mount --bind "$s" "$m"
+		umount "$s"
+	done
+}
+
+# Check for process each 10 seconds
+# If there is no process for more than 5 cycles then exit.
+# Wait for (LOGIN_CHECK_DELAY * LOGIN_CHECK_COUNT) seconds
+# for login to complete.
+declare LOGIN_CHECK_DELAY
+declare -i LOGIN_CHECK_COUNT
+
+# Wait for (IDLE_CHECK_DELAY * IDLE_CHECK_COUNT) seconds of
+# idle sandbox before exiting.
+declare IDLE_CHECK_DELAY
+declare -i IDLE_CHECK_COUNT
+
+LOGIN_CHECK_DELAY=0.5
+LOGIN_CHECK_COUNT=120
+IDLE_CHECK_DELAY=5
+IDLE_CHECK_COUNT=2
+
+# Move mounts
+move_mounts /dev/pts /run/utmp /var/log/wtmp /var/log/btmp
+
+# revert back the hostname
+check_and_sethostname
+# Some hacks to make sure we have a writable ptmx
+chmod 666 /dev/pts/ptmx
+
+# touch a file to indicate sandbox is initialized
+touch /run/ready
+
+if wait_for_processes $LOGIN_CHECK_DELAY $LOGIN_CHECK_COUNT; then
+	echo "detected processes in the sandbox"
+else
+	echo "did not detect a process in the sandbox"
+fi
+wait_for_idle $IDLE_CHECK_DELAY $IDLE_CHECK_COUNT
+exit 0

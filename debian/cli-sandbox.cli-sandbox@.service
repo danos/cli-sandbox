@@ -1,0 +1,23 @@
+[Unit]
+Description=Vyatta Sandbox for User %i
+
+[Service]
+Environment="UNIFIED_CGROUP_HIERARCHY=1"
+ExecStartPre=/opt/vyatta/sbin/cli-sandbox --create %i
+ExecStart=/usr/bin/systemd-nspawn --quiet --keep-unit --private-users=no \
+	--private-network --settings=override --directory=/run/cli-sandbox/%i/cli-%i --machine=cli-%i
+ExecStopPost=/opt/vyatta/sbin/cli-sandbox --destroy %i
+KillMode=mixed
+Type=notify
+RestartForceExitStatus=133
+SuccessExitStatus=133
+Slice=machine.slice
+Delegate=yes
+TasksMax=16384
+
+# Enforce a strict device policy, similar to the one nspawn configures
+# when it allocates its own scope unit. Make sure to keep these
+# policies in sync if you change them!
+DevicePolicy=closed
+DeviceAllow=char-pts rw
+

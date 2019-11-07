@@ -1,0 +1,10 @@
+#!/bin/sh -e
+
+if [ "$1" = configure ]; then
+    cp -f /opt/vyatta/share/pam-configs/sandbox /usr/share/pam-configs/
+    pam-auth-update --package
+fi
+
+#DEBHELPER#
+
+exit 0

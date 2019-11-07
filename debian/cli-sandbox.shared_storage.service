@@ -1,0 +1,7 @@
+[Unit]
+Description=Vyatta Shared Storage Mounting Service
+
+[Service]
+Type=oneshot
+RemainAfterExit=True
+ExecStart=/opt/vyatta/sbin/shared_storage_mount
