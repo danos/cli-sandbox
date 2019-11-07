@@ -26,6 +26,7 @@ Architecture: all
 Depends: systemd-container,
  python3 (>= 3.5),
  python3-shared-storage,
+ python3-yaml,
  ${python3:Depends},
  ${misc:Depends},
 Description: Systemd nspawn services for the login session sandbox
