@@ -1,3 +1,9 @@
+cli-sandbox (0.10.2) unstable; urgency=medium
+
+  * debian: add yaml dependency
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Fri, 08 Nov 2019 10:34:43 -0800
+
 cli-sandbox (0.10.1) unstable; urgency=medium
 
   * DANOS Import
