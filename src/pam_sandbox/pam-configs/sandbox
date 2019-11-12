@@ -1,6 +1,6 @@
 Name: Change Namespace
 Default: yes
-Priority: -100
+Priority: 100
 
 Session-Type: Additional
 Session-Interactive-Only: yes

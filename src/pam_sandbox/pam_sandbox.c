@@ -129,7 +129,7 @@ int pam_sm_close_session(pam_handle_t * pamh, __attribute__ ((unused))
 			 int arg, __attribute__ ((unused))
 			 const char **argv)
 {
-	pam_syslog(pamh, LOG_ERR, "close_session called.\n");
+	pam_syslog(pamh, LOG_INFO, "close_session called.\n");
 	return PAM_SUCCESS;
 }
 
