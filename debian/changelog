@@ -1,3 +1,12 @@
+cli-sandbox (0.14) unstable; urgency=medium
+
+  [ Vyatta Package Maintainers ]
+  * New SSH errors make syslog more chatty
+
+  [ Nachiketa Prachanda ]
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Thu, 14 Nov 2019 10:13:21 -0800
+
 cli-sandbox (0.13) unstable; urgency=medium
 
   * debian: add yaml dependency
