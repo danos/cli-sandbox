@@ -57,6 +57,9 @@ module vyatta-system-login-user-isolation-v1 {
 		The User Isolation feature isolates operator and admin login
 		sessions in a sandboxed restricted environment.";
 
+	revision 2019-12-09 {
+		description "Add units to shared-storage help and description.";
+	}
 	revision 2019-02-19 {
 		description "Added shared-storage and read-only-directory nodes.";
 	}
@@ -117,8 +120,8 @@ module vyatta-system-login-user-isolation-v1 {
 				}
 				leaf size {
 					description
-						"Maximum size of shared storage.";
-					configd:help "Maximum size of shared storage.";
+						"Maximum shared storage size in megabytes.";
+					configd:help "Maximum shared storage size in megabytes.";
 					mandatory true;
 					type uint32 {
 						range "1..8192";
