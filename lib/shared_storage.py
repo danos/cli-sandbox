@@ -28,6 +28,7 @@ import subprocess
 from tempfile import NamedTemporaryFile
 import yaml
 
+
 # Configuration for shared-storage and read-only directories
 def check_access(top, access, perm):
     """check if access is allowed on top with given perm. top is
@@ -37,6 +38,7 @@ def check_access(top, access, perm):
             os.path.exists(top) and
             os.path.isdir(top))
 
+
 def mkdir_p(path):
     """like mkdir -p - ignores if directory exists - pass on other Errors"""
     try:
@@ -45,6 +47,7 @@ def mkdir_p(path):
         if not os.path.isdir(path):
             raise exc from None
 
+
 def cmd_run(cmd, ignore=None):
     """run a command. Raise exception unless ignore is True"""
     try:
@@ -52,15 +55,18 @@ def cmd_run(cmd, ignore=None):
     except subprocess.CalledProcessError as exc:
         raise SharedStorageError("comand {} exited with {}".format(exc.cmd, exc.returncode))
 
+
 def get_backing_file_name(top, path):
     """generate file name for loop mount from path"""
     base = check_output_(['/bin/systemd-escape', '--path', path])
     return os.path.realpath('{}/{}.img'.format(top, base))
 
+
 def is_child_dir(parent, child):
     """Check if child is a subdirectory of parent.
     Expects sanitized paths"""
     return child.startswith(parent + '/')
+
 
 def mount_point(path):
     """Find the root of the mount point for the path"""
@@ -70,11 +76,13 @@ def mount_point(path):
         path = os.path.dirname(path)
     return path
 
+
 def check_output_(cmd):
     """A wrapper for subprocess.check_output to strip trailing newline"""
     out = subprocess.check_output(cmd)
     source = out.decode().rstrip('\n')
     return source
+
 
 def validate_path(path):
     """Test is path is same as its realpath
@@ -82,6 +90,7 @@ def validate_path(path):
     rpath = os.path.abspath(os.path.realpath(path))
     if path != rpath:
         raise SharedStorageError('Invalid path {}: realpath {} is different'.format(path, rpath))
+
 
 def check_mount(what, where):
     """Verify 'what' is mounted at where directory"""
@@ -99,8 +108,10 @@ def check_mount(what, where):
         print("Command {} exited with {}".format(exc.cmd, exc.returncode), file=sys.stderr)
         return False
 
+
 class SharedStorageError(Exception):
     """Exceptions raised by Shared Storage configuration"""
+
 
 class SharedStorage:
     """
@@ -188,7 +199,7 @@ class SharedStorage:
     def check_update_mount_tree(self, mnt):
         """check if mountpoints overlaps"""
         if not self.tree:
-            self.tree = {'name': '/', 'is_mnt': False, 'children':{}}
+            self.tree = {'name': '/', 'is_mnt': False, 'children': {}}
         node = self.tree
         for pname in mnt.split('/'):
             tmp = node['children'].get(pname)
