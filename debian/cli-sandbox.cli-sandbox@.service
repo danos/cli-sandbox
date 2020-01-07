@@ -4,8 +4,7 @@ Description=Vyatta Sandbox for User %i
 [Service]
 Environment="UNIFIED_CGROUP_HIERARCHY=1"
 ExecStartPre=/opt/vyatta/sbin/cli-sandbox --create %i
-ExecStart=/usr/bin/systemd-nspawn --quiet --keep-unit --private-users=no \
-	--private-network --settings=override --directory=/run/cli-sandbox/%i/cli-%i --machine=cli-%i
+ExecStart=/opt/vyatta/sbin/cli-sandbox --start %i
 ExecStopPost=/opt/vyatta/sbin/cli-sandbox --destroy %i
 KillMode=mixed
 Type=notify

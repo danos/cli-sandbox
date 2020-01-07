@@ -167,6 +167,21 @@ class UserSandBox:
             except OSError as exc:
                 print("Failed to remove {}:{}", self.settings, str(exc))
 
+    def start_sandbox(self):
+        nspawn = '/usr/bin/systemd-nspawn'
+
+        # Typically we are invoked as a systemd service of type notify and
+        # systemd-nspawn is responsible for calling sd_notify().
+        # By default systemd expects to receive the notify message from the
+        # main process of the service.
+        # Therefore use an exec() function, ie. without forking, so that
+        # systemd-nspawn maintains our PID.
+
+        os.execl(nspawn, nspawn, '--quiet', '--keep-unit', '--private-users=no',
+                 '--private-network', '--settings=override',
+                 '--directory={}'.format(self.root),
+                 '--machine={}'.format(self.machine))
+
 def main():
     """Main cli-sandbox Program"""
     parser = ArgumentParser(description='Vyatta CLI Sanbox Service Rootfs Setup tool')
@@ -179,6 +194,11 @@ def main():
     action_grp.add_argument('-d',
                             '--destroy',
                             help='destroy temporary rootfs for sandbox',
+                            action='store_true'
+                           )
+    action_grp.add_argument('-s',
+                            '--start',
+                            help='start an existing sandbox',
                             action='store_true'
                            )
     parser.add_argument('name', nargs=1, help='sandbox name')
@@ -202,6 +222,15 @@ def main():
         except OSError as err:
             print('Failed to cleanup sandbox {}:{}'.format(sandbox.name, str(err)))
             sys.exit(1)
+
+    if args.start:
+        try:
+            sandbox.start_sandbox()
+        except OSError as err:
+            print('Failed to start sandbox {}: {}'.format(sandbox.name, err))
+            sys.exit(1)
+
+    # unreached #
 
 if __name__ == '__main__':
     main()
