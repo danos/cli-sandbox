@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019 AT&T intellectual property.
+# Copyright (c) 2020 AT&T intellectual property.
 # All rights reserved
 #
 # SPDX-License-Identifier: LGPL-2.1-only
@@ -26,6 +26,7 @@ import os
 import sys
 import subprocess
 from tempfile import NamedTemporaryFile
+import json
 import yaml
 
 
@@ -92,6 +93,25 @@ def validate_path(path):
         raise SharedStorageError('Invalid path {}: realpath {} is different'.format(path, rpath))
 
 
+def get_loopdev_field(name, field):
+    """Return fields for a loop device. May raise
+    subprocess.CalledProcessError.
+    """
+    cmd = '/sbin/losetup -n -l -J'.split(' ') + [name]
+    try:
+        js_str = check_output_(cmd)
+        js = json.loads(js_str)
+        for record in js['loopdevices']:
+            if record['name'] == name:
+                return record[field]
+        return None
+    except json.JSONDecodeError as exc:
+        print("decode error in losetup output: {}".format(str(exc)))
+    except KeyError:
+        print("No back-file in losetup output")
+    return None
+
+
 def check_mount(what, where):
     """Verify 'what' is mounted at where directory"""
     if not os.path.ismount(where):
@@ -101,8 +121,7 @@ def check_mount(what, where):
         cmd1 = '/bin/findmnt -n -o SOURCE'
         source = check_output_(cmd1.split(' ') + [where])
         if source.startswith('/dev/loop'):
-            cmd2 = '/sbin/losetup -n -l -O BACK-FILE'
-            source = check_output_(cmd2.split(' ') + [source])
+            source = get_loopdev_field(source, 'back-file')
         return source == what
     except subprocess.CalledProcessError as exc:
         print("Command {} exited with {}".format(exc.cmd, exc.returncode), file=sys.stderr)
