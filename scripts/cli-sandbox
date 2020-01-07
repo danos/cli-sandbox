@@ -94,12 +94,15 @@ def remove_native_op_cmds(chroot):
         except OSError as e:
             print("Exception when removing native op commands: {}".format(e))
 
+def gen_machine_name(user):
+    return 'cli-' + user.replace('_', '.')
+
 class UserSandBox:
     """Sandbox class"""
     conf = {k: os.environ.get(k, v) for k, v in SANDBOX_DEFAULTS.items()}
     def __init__(self, name):
         self.name = name
-        self.machine = 'cli-' + name
+        self.machine = gen_machine_name(name)
         self.topdir = os.path.join(self.RUNDIR, name)
         self.settings = os.path.join(self.SETTINGS_DIR, self.machine + '.nspawn')
         self.root = os.path.join(self.topdir, self.machine)

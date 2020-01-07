@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019, AT&T Intellectual Property. All rights reserved.
+ * Copyright (c) 2018-2020, AT&T Intellectual Property. All rights reserved.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -215,6 +215,29 @@ static int enter_sandbox(pam_handle_t * pamh, const char *user)
 }
 
 /*
+ * Sanitise a system username such that it may be used as part of a
+ * machine name. In particular we replace underscores with dots, as
+ * underscores are no longer permitted in machine names since systemd 240.
+ *
+ * The Vyatta configuration does not permit configuring users with dots in
+ * the username so there should be no collision.
+ */
+static char *
+sanitise_username(const char *username)
+{
+	char *p, *out;
+
+	out = strdup(username);
+	if (!out)
+		return NULL;
+
+	for (p = out; *p; p++)
+		*p = (*p == '_') ? '.' : *p;
+
+	return out;
+}
+
+/*
  * get the name of the container and the service name to
  * use to start the container
  */
@@ -224,11 +247,16 @@ get_user_container(pam_handle_t * pamh, const char *username,
 {
 	int r;
 
+	char *name;
 	char *sbox = NULL;
 	char *svc = NULL;
 	assert(username);
 
-	r = asprintf(&sbox, "cli-%s", username);
+	name = sanitise_username(username);
+	if (!name)
+		return -1;
+
+	r = asprintf(&sbox, "cli-%s", name);
 	if (r < 0)
 		goto out;
 
@@ -238,6 +266,7 @@ get_user_container(pam_handle_t * pamh, const char *username,
 
 	r = get_sandbox(pamh, sbox, svc, info);
  out:
+	free(name);
 	free(sbox);
 	free(svc);
 	return r < 0 ? r : 0;
