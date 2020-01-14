@@ -1,3 +1,18 @@
+cli-sandbox (0.16) unstable; urgency=medium
+
+  [ Nachiketa Prachanda ]
+  * fix flake8 warnings
+  * python-lib: use losetup json output
+
+  [ Duncan Eastoe ]
+  * cli-sandbox: Use argparse mutually excl. group
+  * cli-sandbox: Add --start option
+  * cli-sandbox: Replace _ with . in machine names
+
+  [ Nachiketa Prachanda ]
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Tue, 14 Jan 2020 11:28:56 -0800
+
 cli-sandbox (0.15) unstable; urgency=medium
 
   * yang: add units to shared storage help
