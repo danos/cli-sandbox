@@ -67,8 +67,8 @@ typedef struct sandbox_info {
 	pid_t leader;
 } sandbox_info_t;
 
-static int is_sandboxed(pam_handle_t * pamh, const char *user);
-static int enter_sandbox(pam_handle_t * pamh, const char *user);
+static int is_sandboxed(pam_handle_t * pamh, const struct passwd *pw);
+static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw);
 static int wait_for_file(const char *fname);
 static int add_to_namespaces(pam_handle_t * pamh, pid_t tpid);
 static void free_sandbox_info(sandbox_info_t * info);
@@ -87,8 +87,8 @@ static int bus_get_machine_property_uint(pam_handle_t * pamh,
 static int bus_start_unit(pam_handle_t * pamh, sd_bus * bus, const char *unit);
 static int get_sandbox(pam_handle_t * pamh, const char *mach,
 		       const char *svc, sandbox_info_t * info);
-static int get_user_container(pam_handle_t * pamh,
-			      const char *username, sandbox_info_t * info);
+static int get_user_container(pam_handle_t * pamh, const struct passwd *pw,
+			      sandbox_info_t * info);
 static int open_in_pid(pam_handle_t * pamh, pid_t tpid, const char *rel_path);
 static int sandbox_set_hostname(pam_handle_t *pamh, const char *hostname);
 
@@ -99,6 +99,7 @@ int pam_sm_open_session(pam_handle_t * pamh, __attribute__ ((unused))
 {
 	const char *username;
 	int r;
+	struct passwd *pw;
 	int enter_sandbox_retry = 1;
 
 	r = pam_get_user(pamh, &username, NULL);
@@ -107,7 +108,14 @@ int pam_sm_open_session(pam_handle_t * pamh, __attribute__ ((unused))
 		return PAM_SERVICE_ERR;
 	}
 
-	if (!is_sandboxed(pamh, username)) {
+	pw = pam_modutil_getpwnam(pamh, username);
+	if (pw == NULL) {
+		pam_syslog(pamh, LOG_ERR,
+			"sandbox: can't get entry for user %s\n", username);
+		return PAM_SERVICE_ERR;
+	}
+
+	if (!is_sandboxed(pamh, pw)) {
 		return PAM_SUCCESS;
 	}
 	/* Retry entering sanbox once as it is possible that
@@ -116,7 +124,7 @@ int pam_sm_open_session(pam_handle_t * pamh, __attribute__ ((unused))
 	 * this session has attempted to switch namespaces.
 	 */
 	while(enter_sandbox_retry-- >= 0) {
-		r = enter_sandbox(pamh, username);
+		r = enter_sandbox(pamh, pw);
 		if (r == 0)
 			return PAM_SUCCESS;
 	}
@@ -138,17 +146,9 @@ int pam_sm_close_session(pam_handle_t * pamh, __attribute__ ((unused))
  * -- check if sandboxing globally disabled.
  * -- check if the user is in the excluded group.
  */
-static int is_sandboxed(pam_handle_t * pamh, const char *user)
+static int is_sandboxed(pam_handle_t * pamh, const struct passwd *pw)
 {
 	int i;
-	struct passwd *pw;
-
-	pw = pam_modutil_getpwnam(pamh, user);
-	if (pw == NULL) {
-		pam_syslog(pamh, LOG_ERR,
-			"sandbox: can't get entry for user %s\n", user);
-		return 1;
-	}
 
 	/* don't sandbox uid 0 */
 	if (pw->pw_uid == 0)
@@ -156,7 +156,7 @@ static int is_sandboxed(pam_handle_t * pamh, const char *user)
 
 	/* don't sandbox if user is in one of the excluded groups */
 	for (i = 0; exclude_groups[i] != NULL; i++) {
-		if (pam_modutil_user_in_group_nam_nam(pamh, user, exclude_groups[i]))
+		if (pam_modutil_user_in_group_nam_nam(pamh, pw->pw_name, exclude_groups[i]))
 			return 0;
 	}
 	return 1;
@@ -168,19 +168,20 @@ static int is_sandboxed(pam_handle_t * pamh, const char *user)
  * 2. chroot into the containers root directory.
  * 3. Setup the container hostname to be same as host
  */
-static int enter_sandbox(pam_handle_t * pamh, const char *user)
+static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw)
 {
 	int r;
 	sandbox_info_t info = { };
 	char hostname[MAXHOSTNAMELEN + 1];
 
-	r = get_user_container(pamh, user, &info);
+	r = get_user_container(pamh, pw, &info);
 	if (r < 0) {
 		pam_syslog(pamh, LOG_ERR, "failed to get user's container\n");
 		goto out;
 	}
+
 	pam_syslog(pamh, LOG_INFO, "%s login entering sandbox %s(leader=%d)\n",
-		   user, info.name, info.leader);
+		   pw->pw_name, info.name, info.leader);
 
 	hostname[sizeof(hostname) - 1] = '\0';
 	r = gethostname(hostname, sizeof(hostname) - 1);
@@ -242,7 +243,7 @@ sanitise_username(const char *username)
  * use to start the container
  */
 static int
-get_user_container(pam_handle_t * pamh, const char *username,
+get_user_container(pam_handle_t * pamh, const struct passwd *pw,
 		   sandbox_info_t * info)
 {
 	int r;
@@ -250,9 +251,9 @@ get_user_container(pam_handle_t * pamh, const char *username,
 	char *name;
 	char *sbox = NULL;
 	char *svc = NULL;
-	assert(username);
+	assert(pw);
 
-	name = sanitise_username(username);
+	name = sanitise_username(pw->pw_name);
 	if (!name)
 		return -1;
 
@@ -260,7 +261,7 @@ get_user_container(pam_handle_t * pamh, const char *username,
 	if (r < 0)
 		goto out;
 
-	r = asprintf(&svc, "cli-sandbox@%s.service", username);
+	r = asprintf(&svc, "cli-sandbox@%s.service", pw->pw_name);
 	if (r < 0)
 		goto out;
 
