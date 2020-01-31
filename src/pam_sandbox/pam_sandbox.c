@@ -47,6 +47,7 @@
 #define MAXHOSTNAMELEN 256
 #define SANDBOX_RETRY_COUNT 20
 #define SANDBOX_RETRY_DELAY (100 * 1000 * 1000) /* Nano seconds */
+#define SANDBOX_RUN_DIR "/run/cli-sandbox"
 
 #define UNUSED(x)		/* X */
 
@@ -215,27 +216,37 @@ static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw)
 	return r < 0 ? r : 0;
 }
 
-/*
- * Sanitise a system username such that it may be used as part of a
- * machine name. In particular we replace underscores with dots, as
- * underscores are no longer permitted in machine names since systemd 240.
- *
- * The Vyatta configuration does not permit configuring users with dots in
- * the username so there should be no collision.
- */
-static char *
-sanitise_username(const char *username)
+static int user_sandbox_root(const struct passwd *pw,
+			     char *buf, size_t buflen)
 {
-	char *p, *out;
+	int ret;
 
-	out = strdup(username);
-	if (!out)
-		return NULL;
+	ret = snprintf(buf, buflen, SANDBOX_RUN_DIR "/%s/cli-%u",
+		pw->pw_name, pw->pw_uid);
 
-	for (p = out; *p; p++)
-		*p = (*p == '_') ? '.' : *p;
+	return (ret > 0 && (size_t)ret < buflen) ? 0 : -1;
+}
 
-	return out;
+static int container_is_valid(pam_handle_t *pamh,
+			      const struct passwd *pw,
+			      const sandbox_info_t *info)
+{
+	char exp_sandbox_root[PATH_MAX];
+	int r;
+
+	r = user_sandbox_root(pw, exp_sandbox_root, sizeof exp_sandbox_root);
+	if (r < 0) {
+		pam_syslog(pamh, LOG_ERR, "failed to get path to user's sandbox\n");
+		return 0;
+	}
+
+	if (strcmp(exp_sandbox_root, info->root_directory)) {
+		pam_syslog(pamh, LOG_ERR, "unexpected sandbox root %s, expected %s "
+				"(UID collision?)\n", info->root_directory, exp_sandbox_root);
+		return 0;
+	}
+
+	return 1;
 }
 
 /*
@@ -248,16 +259,11 @@ get_user_container(pam_handle_t * pamh, const struct passwd *pw,
 {
 	int r;
 
-	char *name;
 	char *sbox = NULL;
 	char *svc = NULL;
 	assert(pw);
 
-	name = sanitise_username(pw->pw_name);
-	if (!name)
-		return -1;
-
-	r = asprintf(&sbox, "cli-%s", name);
+	r = asprintf(&sbox, "cli-%u", pw->pw_uid);
 	if (r < 0)
 		goto out;
 
@@ -266,8 +272,11 @@ get_user_container(pam_handle_t * pamh, const struct passwd *pw,
 		goto out;
 
 	r = get_sandbox(pamh, sbox, svc, info);
+	if (r < 0)
+		goto out;
+
+	r = container_is_valid(pamh, pw, info) ? 0 : -1;
  out:
-	free(name);
 	free(sbox);
 	free(svc);
 	return r < 0 ? r : 0;
