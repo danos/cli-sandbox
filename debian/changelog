@@ -1,3 +1,13 @@
+cli-sandbox (0.17) unstable; urgency=medium
+
+  [ Duncan Eastoe ]
+  * pam_sandbox: pass passwd struct internally
+  * Use user ID for sandbox machine names
+
+  [ Nachiketa Prachanda ]
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Fri, 07 Feb 2020 11:35:36 -0800
+
 cli-sandbox (0.16) unstable; urgency=medium
 
   [ Nachiketa Prachanda ]
