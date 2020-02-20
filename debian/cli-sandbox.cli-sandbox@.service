@@ -3,6 +3,7 @@ Description=Vyatta Sandbox for User %i
 
 [Service]
 Environment="UNIFIED_CGROUP_HIERARCHY=1"
+EnvironmentFile=-/run/cli-sandbox/%i/cli-sandbox.env
 ExecStartPre=/opt/vyatta/sbin/cli-sandbox --create %i
 ExecStart=/opt/vyatta/sbin/cli-sandbox --start %i
 ExecStopPost=/opt/vyatta/sbin/cli-sandbox --destroy %i

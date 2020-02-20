@@ -25,7 +25,11 @@ SANDBOX_DEFAULTS = {
     'NSPAWN_TEMPLATE': '/etc/cli-sandbox/nspawn-templates/cli_sandbox.nspawn',
     'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
     'SETTINGS_DIR': '/run/systemd/nspawn',
+    'ENVFILE': 'cli-sandbox.env'
     }
+
+# ENVFILE vars
+ENV_UID = 'CLI_SANDBOX_UID'
 
 # Shared Storage configuration file
 SHARED_RUN_CONF = '/run/vyatta/shared_storage/shared_storage.conf'
@@ -94,22 +98,35 @@ def remove_native_op_cmds(chroot):
         except OSError as e:
             print("Exception when removing native op commands: {}".format(e))
 
-def gen_machine_name(pw):
-    return 'cli-{}'.format(pw.pw_uid)
+def gen_machine_name(uid):
+    return 'cli-{}'.format(uid)
 
 class UserSandBox:
     """Sandbox class"""
     conf = {k: os.environ.get(k, v) for k, v in SANDBOX_DEFAULTS.items()}
     def __init__(self, name):
         self.name = name
-        self.pw_entry = pwd.getpwnam(name)
-        self.machine = gen_machine_name(self.pw_entry)
+
+        try:
+            self.pw_entry = pwd.getpwnam(name)
+        except KeyError as e:
+            self.pw_entry = None
+            self.machine = gen_machine_name(os.environ[ENV_UID])
+        else:
+            self.machine = gen_machine_name(self.pw_entry.pw_uid)
+
         self.topdir = os.path.join(self.RUNDIR, name)
         self.settings = os.path.join(self.SETTINGS_DIR, self.machine + '.nspawn')
         self.root = os.path.join(self.topdir, self.machine)
 
     def __getattr__(self, field):
         return self.conf[field]
+
+    def _write_env(self):
+        prev_mask = os.umask(0o077)
+        with open(os.path.join(self.topdir, ENVFILE), 'w') as f:
+            f.write("{}={}\n".format(ENV_UID, self.pw_entry.pw_uid))
+        os.umask(prev_mask)
 
     def edit_nspawn_template(self):
         """create nspawn settings file.
@@ -135,6 +152,7 @@ class UserSandBox:
                   'tmpfs', self.topdir
                  ]
         sb_run(mntcmd)
+        self._write_env()
         os.mkdir(self.root)
         upper = os.path.join(self.topdir, 'empty')
         work = os.path.join(self.topdir, 'work')
