@@ -1,3 +1,11 @@
+cli-sandbox (0.18) unstable; urgency=medium
+
+  [ Duncan Eastoe ]
+  * cli-sandbox: clean sandboxes of deleted users
+  * cli-sandbox: fix NameError raised in _write_env()
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Thu, 02 Apr 2020 14:10:59 -0700
+
 cli-sandbox (0.17) unstable; urgency=medium
 
   [ Duncan Eastoe ]
