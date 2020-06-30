@@ -21,7 +21,7 @@ import sys
 import stat
 import grp
 import itertools
-from vyatta.shared_storage import SharedStorage, SharedStorageError, mkdir_p, cmd_run
+from vyatta.shared_storage import SharedStorage, SharedStorageError, mkdir_p, cmd_run, check_mount
 
 SHARED_RUN_CONF = '/run/vyatta/shared_storage/shared_storage.conf'
 SHARED_MOUNT_STATE = '/run/vyatta/shared_storage/shared_mount.conf'
@@ -70,7 +70,11 @@ def do_mount(path, info):
     checked before"""
     what = info['what']
     if os.path.ismount(path):
-        raise SharedStorageError("Can't mount on a mount point")
+        if check_mount(what, path):
+            print("warning: not mount {} at {}: already mounted".format(what, path), file=sys.stderr)
+            return
+        else:
+            raise SharedStorageError("Can't mount on a mount point")
     mkdir_p(path)
     if os.listdir(path):
         raise SharedStorageError("can't mount on a non-empty directory")
