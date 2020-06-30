@@ -18,21 +18,35 @@ STATE and shared mountes are mounted/unmounted.
 
 import os
 import sys
+import stat
 import grp
+import itertools
 from vyatta.shared_storage import SharedStorage, SharedStorageError, mkdir_p, cmd_run
 
 SHARED_RUN_CONF = '/run/vyatta/shared_storage/shared_storage.conf'
 SHARED_MOUNT_STATE = '/run/vyatta/shared_storage/shared_mount.conf'
 VYATTA_CFG_GRP = 'vyattacfg'
+MOUNT_ROOT_PERM = stat.S_ISGID | stat.S_IRWXU | stat.S_IRWXG | stat.S_IROTH | stat.S_IXOTH
+
 
 def vyattacfg_chgrp(path):
     """change the group to vyattacfg"""
     try:
         cfggrp = grp.getgrnam(VYATTA_CFG_GRP)
         os.chown(path, 0, cfggrp.gr_gid)
-        os.chmod(path, 0o775)
-    except (OSError, KeyError) as exc: # ignore no existing group
+        os.chmod(path, MOUNT_ROOT_PERM)
+    except (OSError, KeyError) as exc:  # ignore no existing group
         print("Error: {}".format(str(exc)), file=sys.stderr)
+    for top, dirs, files in os.walk(path):
+        for name in itertools.chain(dirs, files):
+            fpath = os.path.join(top, name)
+            try:
+                name_stat = os.stat(fpath)
+                if name_stat.st_uid != 0 or name_stat.st_gid != cfggrp.gr_gid:
+                    os.chown(fpath, 0, cfggrp.gr_gid)
+            except OSError as exc:
+                print("Warning: chown {} failed: {}.".format(fpath, str(exc)), file=sys.stderr)
+
 
 def create_new_fs(path, fname, size):
     """create a sparse file and mkfs. The imagename file
