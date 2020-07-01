@@ -1,3 +1,10 @@
+cli-sandbox (0.19) unstable; urgency=medium
+
+  * shared_storage: fix up file permissions
+  * do not fail on correctly mounted shared storage
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Wed, 01 Jul 2020 10:07:10 -0700
+
 cli-sandbox (0.18) unstable; urgency=medium
 
   [ Duncan Eastoe ]
