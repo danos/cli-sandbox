@@ -16,10 +16,6 @@ BindReadOnly=/etc/gshadow
 BindReadOnly=/etc/profile
 BindReadOnly=/etc/profile.d
 BindReadOnly=/etc/nsswitch.conf
-Bind=/dev/pts:/.mounts/_dev_pts
-Bind=/run/utmp:/.mounts/_run_utmp
-Bind=/var/log/wtmp:/.mounts/_var_log_wtmp
-Bind=/var/log/btmp:/.mounts/_var_log_btmp
 
 [Network]
 Private=yes

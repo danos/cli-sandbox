@@ -25,7 +25,8 @@ SANDBOX_DEFAULTS = {
     'NSPAWN_TEMPLATE': '/etc/cli-sandbox/nspawn-templates/cli_sandbox.nspawn',
     'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
     'SETTINGS_DIR': '/run/systemd/nspawn',
-    'ENVFILE': 'cli-sandbox.env'
+    'ENVFILE': 'cli-sandbox.env',
+    'MOVED_MOUNTS': ['/dev/pts', '/run/utmp', '/var/log/wtmp', '/var/log/btmp']
     }
 
 # ENVFILE vars
@@ -128,10 +129,23 @@ class UserSandBox:
             f.write("{}={}\n".format(ENV_UID, self.pw_entry.pw_uid))
         os.umask(prev_mask)
 
+    def get_moved_mounts(self):
+        """Returns mounts to be moved after entering the sandbox namespace.
+        Add extra bind mounts for files and directories that can't be directly
+        shared mounted before launching the sandbox and needs to be moved after
+        enter this sandboxes mount namespaces.
+        These are mounted under /.mounts in sandbox root director.
+        """
+        def bind_str(fname):
+            return "{}:/.mounts/{}".format(fname, fname.replace('/', '_'))
+
+        return [bind_str(os.path.abspath(x))
+                for x in self.MOVED_MOUNTS if os.path.exists(x)]
+
     def edit_nspawn_template(self):
         """create nspawn settings file.
         Add extra bind mounts for Home directory and shared-storage mounts
-        in a separte [Files] section of nspawn settings file.
+        in a separate [Files] section of nspawn settings file.
         """
         if not os.path.isdir(os.path.dirname(self.settings)):
             os.mkdir(os.path.dirname(self.settings), 0o755)
@@ -142,6 +156,8 @@ class UserSandBox:
             fout.write(bindfmt.format(self.pw_entry.pw_dir))
             for shared_dir in get_current_shares():
                 fout.write(bindfmt.format(shared_dir))
+            for moved_mount in self.get_moved_mounts():
+                fout.write(bindfmt.format(moved_mount))
 
     def create_sandbox(self):
         """create and setup sandbox rootfs"""
