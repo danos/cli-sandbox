@@ -42,6 +42,18 @@ ROOT_TMP_FS_MAX = '1m'
 
 # Used by call to sb_run(cmd, IGNORE) when we want ignore the results of a command
 IGNORE = True
+
+# command-not-found handler script variables for sandbox
+# CNF script is called:
+# /usr/lib/command-not-found -- cmd
+#
+CNF_FILENAME = '/usr/lib/command-not-found'
+CNF_SCRIPT = """#!/bin/bash
+cmd="${@: -1}" # Last argument
+user_shell="$(basename "${SHELL:-/bin/vbash}")"
+echo "${user_shell}-sandbox: ${cmd}: command not found" >&2
+"""
+
 def sb_run(cmd, ignore=False):
     """run a command"""
     try:
@@ -101,6 +113,17 @@ def remove_native_op_cmds(chroot):
 
 def gen_machine_name(uid):
     return 'cli-{}'.format(uid)
+
+def write_command_not_found(chroot):
+    """change command-not-found handler in chroot"""
+    try:
+        fname = chroot + CNF_FILENAME
+        with open(fname, 'w') as cnf:
+            cnf.write(CNF_SCRIPT)
+        os.chmod(fname, 0o755)
+    except:
+        print("Exception when writing {}".format(cnf_filename))
+
 
 class UserSandBox:
     """Sandbox class"""
@@ -181,6 +204,7 @@ class UserSandBox:
                  ]
         sb_run(mntcmd)
         remove_native_op_cmds(self.root)
+        write_command_not_found(self.root)
         shutil.copy2(self.INIT2, self.root)
         os.chmod(os.path.join(self.root, os.path.basename(self.INIT2)), 0o755)
         os.mkdir(os.path.join(self.root, '.mounts'), 0o700)
