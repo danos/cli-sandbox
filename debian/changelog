@@ -1,3 +1,10 @@
+cli-sandbox (0.20) unstable; urgency=medium
+
+  * check path existence before setting up bind mounts
+  * change command not found message in sandbox
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Mon, 13 Jul 2020 11:16:03 -0700
+
 cli-sandbox (0.19) unstable; urgency=medium
 
   * shared_storage: fix up file permissions
