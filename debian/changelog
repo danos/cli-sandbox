@@ -1,3 +1,10 @@
+cli-sandbox (0.21) unstable; urgency=medium
+
+  [ Duncan Eastoe ]
+  * cli-sandbox: Handle SSSD pipes directory on tmpfs
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Fri, 24 Jul 2020 20:27:24 +0000
+
 cli-sandbox (0.20) unstable; urgency=medium
 
   * check path existence before setting up bind mounts
