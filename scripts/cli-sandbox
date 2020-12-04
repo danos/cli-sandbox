@@ -54,10 +54,10 @@ user_shell="$(basename "${SHELL:-/bin/vbash}")"
 echo "${user_shell}-sandbox: ${cmd}: command not found" >&2
 """
 
-def sb_run(cmd, ignore=False):
+def sb_run(cmd, ignore=False, env=None):
     """run a command"""
     try:
-        subprocess.run(cmd, check=(not ignore))
+        subprocess.run(cmd, check=(not ignore), env=env)
     except subprocess.CalledProcessError as err:
         print('Failed: {}:{}'.format(' '.join(cmd), str(err)), file=sys.stderr)
         sys.exit(1)
