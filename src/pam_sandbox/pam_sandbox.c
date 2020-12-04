@@ -85,7 +85,9 @@ static int bus_get_machine_property_uint(pam_handle_t * pamh,
 					  sd_bus * bus,
 					  const char *path,
 					  char *name, void *value);
-static int bus_start_unit(pam_handle_t * pamh, sd_bus * bus, const char *unit);
+static int bus_reload_or_restart_unit(pam_handle_t * pamh,
+				      sd_bus * bus,
+				      const char *unit);
 static int get_sandbox(pam_handle_t * pamh, const char *mach,
 		       const char *svc, sandbox_info_t * info);
 static int get_user_container(pam_handle_t * pamh, const struct passwd *pw,
@@ -174,6 +176,29 @@ static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw)
 	int r;
 	sandbox_info_t info = { };
 	char hostname[MAXHOSTNAMELEN + 1];
+	char *host_ready_path = NULL;
+	struct stat st;
+	struct timespec *host_ready_mtime = NULL;
+
+	r = asprintf(&host_ready_path,
+		     SANDBOX_RUN_DIR "/%s/ready", pw->pw_name);
+	if (r < 0)
+		goto out;
+
+	/*
+	 * Get the last modification time of the "ready" file so we can
+	 * determine if an existing sandbox updated successfully, by
+	 * later checking whether it is updated. get_user_container()
+	 * will reload (update) the sandbox so we must obtain the mtime first.
+	 *
+	 * If the "ready" file does not exist this implies that the
+	 * sandbox is not yet running, and therefore cannot be updated,
+	 * which is not an error. In this case get_user_container() will
+	 * start the sandbox and we then wait on the existence of /run/ready
+	 * in the sandbox mount namespace to determine if the sandbox has started.
+	 */
+	if (stat(host_ready_path, &st) == 0)
+		host_ready_mtime = &st.st_mtim;
 
 	r = get_user_container(pamh, pw, &info);
 	if (r < 0) {
@@ -189,6 +214,21 @@ static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw)
 	if (r < 0) {
 		pam_syslog(pamh, LOG_ERR, "failed to get hostname:%s", strerror(errno));
 		strcpy(hostname, "localhost"); /* Use something */
+	}
+
+	/*
+	 * If this was an existing sandbox ("ready" file existed) wait until
+	 * the modification time on the "ready" file changes.
+	 * This indicates that the sandbox has successfully been updated.
+	 * This must be done before switching to the sandbox namespaces.
+	 */
+	if (host_ready_mtime) {
+		r = wait_for_file(host_ready_path, host_ready_mtime);
+		if (r < 0) {
+			pam_syslog(pamh, LOG_ERR,
+				   "failed to enter sandbox - reload not observed");
+			goto out;
+		}
 	}
 
 	r = add_to_namespaces(pamh, info.leader);
@@ -212,6 +252,7 @@ static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw)
 	}
 
  out:
+	free(host_ready_path);
 	free_sandbox_info(&info);
 	return r < 0 ? r : 0;
 }
@@ -550,7 +591,9 @@ bus_get_machine_property_uint(pam_handle_t * pamh, sd_bus * bus,
 	return r < 0 ? -1 : 0;
 }
 
-static int bus_start_unit(pam_handle_t * pamh, sd_bus * bus, const char *unit)
+static int bus_reload_or_restart_unit(pam_handle_t * pamh,
+				      sd_bus * bus,
+				      const char *unit)
 {
 	sd_bus_error e = SD_BUS_ERROR_NULL;
 	sd_bus_message *m = NULL;
@@ -561,7 +604,8 @@ static int bus_start_unit(pam_handle_t * pamh, sd_bus * bus, const char *unit)
 			       SYSTEMD,
 			       SYSTEMD_PATH,
 			       SYSTEMD_MANAGER,
-			       "StartUnit", &e, &m, "ss", unit, "fail");
+			       "ReloadOrRestartUnit",
+			       &e, &m, "ss", unit, "fail");
 
 	if (r < 0) {
 		pam_syslog(pamh, LOG_ERR,
@@ -593,6 +637,7 @@ get_sandbox(pam_handle_t * pamh, const char *mach, const char *svc,
 {
 	sd_bus *bus = NULL;
 	int r;
+	int machine_running = 0;
 	int service_queued = 0;
 	int retry = SANDBOX_RETRY_COUNT;
 	const struct timespec delay = { 0, SANDBOX_RETRY_DELAY };
@@ -610,21 +655,31 @@ get_sandbox(pam_handle_t * pamh, const char *mach, const char *svc,
 
 	do {
 		r = get_machine_info(pamh, bus, mach, info);
-		if (r == 0)
-			break;
 		/* No device (ENXIO) is expected on 1st access to sandbox */
-		if (r != -ENXIO)
+		if (r && r != -ENXIO)
 			pam_syslog(pamh, LOG_ERR,
 				   "get_machine_info failed - starting unit\n");
+		machine_running = r == 0;
 		if (!service_queued) {
-			r = bus_start_unit(pamh, bus, svc);
+			/*
+			* We don't actually ever want to restart the unit.
+			* If the unit is running we need to reload it,
+			* otherwise we need to start it. "ReloadOrRestartUnit"
+			* meets these needs so long as the service supports
+			* reloading, and the service represented by svc does
+			* (this logic will need adjusting if that ever changes).
+			*/
+			r = bus_reload_or_restart_unit(pamh, bus, svc);
 			if (r < 0)
 				pam_syslog(pamh, LOG_ERR,
-					   "Failed to start service. remaining %d retries\n",
+					   "Failed to start/reload service. remaining %d retries\n",
 					   retry);
 			else
 				service_queued = 1;
 		}
+		if (machine_running && service_queued)
+			/* Got the sandbox info and queued a reload */
+			break;
 		nanosleep(&delay, NULL);
 	} while (retry-- >= 0);
 	sd_bus_unref(bus);
