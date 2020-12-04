@@ -240,6 +240,17 @@ class UserSandBox:
 
         self._run_hooks(self.POST_CREATE_HOOKS_DIR)
 
+    def update_sandbox(self):
+        """
+        Updates an existing sandbox.
+
+        The mtime of the sandbox's "ready" file is
+        updated on completion of the update.
+        """
+        ready_file = os.path.join(self.topdir, "ready")
+        if os.path.exists(ready_file):
+            os.utime(ready_file)
+
     def destroy_sandbox(self):
         """cleanup sandbox rootfs"""
         if os.path.isdir(self.root) and os.path.ismount(self.root):
@@ -280,6 +291,11 @@ def main():
                             help='create temporary rootfs for sandbox',
                             action='store_true'
                            )
+    action_grp.add_argument('-u',
+                            '--update',
+                            help='update an existing sandbox',
+                            action='store_true'
+                           )
     action_grp.add_argument('-d',
                             '--destroy',
                             help='destroy temporary rootfs for sandbox',
@@ -302,6 +318,14 @@ def main():
             sys.exit(0)
         except OSError as err:
             print('Failed to create sandbox {}:{}'.format(sandbox.name, str(err)))
+            sys.exit(1)
+
+    if args.update:
+        try:
+            sandbox.update_sandbox()
+            sys.exit(0)
+        except OSError as err:
+            print('Failed to update sandbox {}:{}'.format(sandbox.name, str(err)))
             sys.exit(1)
 
     if args.destroy:
