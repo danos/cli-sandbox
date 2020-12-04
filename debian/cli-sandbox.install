@@ -3,3 +3,4 @@ scripts/cli_sandbox_init opt/vyatta/sbin/
 scripts/shared_storage_mount opt/vyatta/sbin/
 scripts/vyatta_shared_storage opt/vyatta/sbin/
 conf/cli_sandbox.nspawn etc/cli-sandbox/nspawn-templates/
+conf/hooks etc/cli-sandbox

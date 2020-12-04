@@ -23,6 +23,7 @@ SANDBOX_DEFAULTS = {
     'DISTDIR': '/var/lib/sandbox',
     'RUNDIR': '/run/cli-sandbox',
     'NSPAWN_TEMPLATE': '/etc/cli-sandbox/nspawn-templates/cli_sandbox.nspawn',
+    'POST_CREATE_HOOKS_DIR': '/etc/cli-sandbox/hooks/post-create.d',
     'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
     'SETTINGS_DIR': '/run/systemd/nspawn',
     'ENVFILE': 'cli-sandbox.env',
@@ -159,6 +160,12 @@ class UserSandBox:
     def __getattr__(self, field):
         return self.conf[field]
 
+    def _run_hooks(self, hook_dir):
+        if os.path.isdir(hook_dir):
+            env = os.environ.copy()
+            env.update(self.env)
+            sb_run(["run-parts", "--report", hook_dir], env=env)
+
     def _write_env(self):
         prev_mask = os.umask(0o077)
         with open(os.path.join(self.topdir, self.ENVFILE), 'w') as f:
@@ -237,6 +244,8 @@ class UserSandBox:
         hname = os.uname()[1]
         with open(os.path.join(self.root, 'hostname.sandbox'), 'w') as outfile:
             print(hname, file=outfile)
+
+        self._run_hooks(self.POST_CREATE_HOOKS_DIR)
 
     def destroy_sandbox(self):
         """cleanup sandbox rootfs"""
