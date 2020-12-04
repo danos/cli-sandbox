@@ -23,7 +23,8 @@ SANDBOX_DEFAULTS = {
     'DISTDIR': '/var/lib/sandbox',
     'RUNDIR': '/run/cli-sandbox',
     'NSPAWN_TEMPLATE': '/etc/cli-sandbox/nspawn-templates/cli_sandbox.nspawn',
-    'POST_CREATE_HOOKS_DIR': '/etc/cli-sandbox/hooks/post-create.d',
+    'INIT_HOOKS_DIR': '/etc/cli-sandbox/hooks/sandbox-init.d',
+    'POST_CREATE_HOOKS_DIR': '/etc/cli-sandbox/hooks/sandbox-post-create.d',
     'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
     'SETTINGS_DIR': '/run/systemd/nspawn',
     'ENVFILE': 'cli-sandbox.env',
@@ -244,6 +245,10 @@ class UserSandBox:
         hname = os.uname()[1]
         with open(os.path.join(self.root, 'hostname.sandbox'), 'w') as outfile:
             print(hname, file=outfile)
+
+        if os.path.isdir(self.INIT_HOOKS_DIR):
+            shutil.copytree(self.INIT_HOOKS_DIR, os.path.join(
+                self.root, self.INIT_HOOKS_DIR.lstrip(os.path.sep)))
 
         self._run_hooks(self.POST_CREATE_HOOKS_DIR)
 

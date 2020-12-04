@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2018 AT&T intellectual property.
+# Copyright (c) 2018, 2020 AT&T intellectual property.
 # All rights reserved
 #
 # SPDX-License-Identifier: GPL-2.0-only
@@ -132,6 +132,8 @@ LOGIN_CHECK_COUNT=120
 IDLE_CHECK_DELAY=5
 IDLE_CHECK_COUNT=2
 
+HOOKS_DIR="/etc/cli-sandbox/hooks/sandbox-init.d"
+
 # Move mounts
 move_mounts /dev/pts /run/utmp /var/log/wtmp /var/log/btmp
 
@@ -139,6 +141,10 @@ move_mounts /dev/pts /run/utmp /var/log/wtmp /var/log/btmp
 check_and_sethostname
 # Some hacks to make sure we have a writable ptmx
 chmod 666 /dev/pts/ptmx
+
+if [ -d "$HOOKS_DIR" ]; then
+	run-parts --report "$HOOKS_DIR" || exit $?
+fi
 
 # touch a file to indicate sandbox is initialized
 touch /run/ready
