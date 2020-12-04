@@ -170,7 +170,8 @@ class UserSandBox:
     def _write_env(self):
         prev_mask = os.umask(0o077)
         with open(os.path.join(self.topdir, self.ENVFILE), 'w') as f:
-            f.write("{}={}\n".format(ENV_UID, self.pw_entry.pw_uid))
+            for n, v in self.env.items():
+                f.write("{}={}\n".format(n, v))
         os.umask(prev_mask)
 
     def get_moved_mounts(self):
