@@ -133,7 +133,7 @@ class UserSandBox:
 
         try:
             self.pw_entry = pwd.getpwnam(name)
-        except KeyError as e:
+        except KeyError:
             self.pw_entry = None
             self.machine = gen_machine_name(os.environ[ENV_UID])
         else:
