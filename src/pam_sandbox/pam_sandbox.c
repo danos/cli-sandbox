@@ -70,7 +70,7 @@ typedef struct sandbox_info {
 
 static int is_sandboxed(pam_handle_t * pamh, const struct passwd *pw);
 static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw);
-static int wait_for_file(const char *fname);
+static int wait_for_file(const char *fname, const struct timespec *mtime);
 static int add_to_namespaces(pam_handle_t * pamh, pid_t tpid);
 static void free_sandbox_info(sandbox_info_t * info);
 static int get_machine_info(pam_handle_t * pamh, sd_bus * bus,
@@ -201,7 +201,7 @@ static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw)
 	}
 
 	/* Lets wait of sandbox to be ready */
-	r = wait_for_file("/run/ready");
+	r = wait_for_file("/run/ready", NULL);
 	if (r < 0) {
 		pam_syslog(pamh, LOG_ERR, "failed to enter sandbox - sandbox not ready");
 		goto out;
@@ -304,14 +304,22 @@ static int open_in_pid(pam_handle_t * pamh, pid_t tpid, const char *rel_path)
 	return fd;
 }
 
-static int wait_for_file(const char *fname)
+static int wait_for_file(const char *fname, const struct timespec *mtime)
 {
 	struct stat st;
 	const struct timespec delay = { 0, SANDBOX_RETRY_DELAY };
 	int retries = SANDBOX_RETRY_COUNT;
 	while(retries--) {
-		if (stat(fname, &st) == 0)
+		if (stat(fname, &st) == 0) {
+
+			if (!mtime)
+				return 0;
+
+			if (mtime->tv_sec != st.st_mtim.tv_sec ||
+				mtime->tv_nsec != st.st_mtim.tv_nsec)
 			return 0;
+		}
+
 		nanosleep(&delay, NULL);
 	}
 	return -1;
