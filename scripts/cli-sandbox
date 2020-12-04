@@ -30,7 +30,11 @@ SANDBOX_DEFAULTS = {
     }
 
 # ENVFILE vars
+ENV_NSPAWN_TEMPLATE = 'CLI_SANDBOX_NSPAWN_TEMPLATE'
+ENV_ROOT = 'CLI_SANDBOX_ROOT'
+ENV_TOP = 'CLI_SANDBOX_TOP'
 ENV_UID = 'CLI_SANDBOX_UID'
+ENV_USER = 'CLI_SANDBOX_USER'
 
 # Shared Storage configuration file
 SHARED_RUN_CONF = '/run/vyatta/shared_storage/shared_storage.conf'
@@ -135,13 +139,22 @@ class UserSandBox:
             self.pw_entry = pwd.getpwnam(name)
         except KeyError:
             self.pw_entry = None
-            self.machine = gen_machine_name(os.environ[ENV_UID])
+            uid = os.environ[ENV_UID]
         else:
-            self.machine = gen_machine_name(self.pw_entry.pw_uid)
+            uid = self.pw_entry.pw_uid
+        finally:
+            self.machine = gen_machine_name(uid)
 
         self.topdir = os.path.join(self.RUNDIR, name)
         self.settings = os.path.join(self.SETTINGS_DIR, self.machine + '.nspawn')
         self.root = os.path.join(self.topdir, self.machine)
+        self.env = {
+            ENV_NSPAWN_TEMPLATE: self.settings,
+            ENV_ROOT: self.root,
+            ENV_TOP: self.topdir,
+            ENV_UID: str(uid),
+            ENV_USER: self.name,
+        }
 
     def __getattr__(self, field):
         return self.conf[field]
