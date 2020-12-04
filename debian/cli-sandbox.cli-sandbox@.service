@@ -6,6 +6,7 @@ Environment="UNIFIED_CGROUP_HIERARCHY=1"
 EnvironmentFile=-/run/cli-sandbox/%i/cli-sandbox.env
 ExecStartPre=/opt/vyatta/sbin/cli-sandbox --create %i
 ExecStart=/opt/vyatta/sbin/cli-sandbox --start %i
+ExecStartPost=run-parts --report /etc/cli-sandbox/hooks/sandbox-post-start.d
 ExecStopPost=/opt/vyatta/sbin/cli-sandbox --destroy %i
 KillMode=mixed
 Type=notify
