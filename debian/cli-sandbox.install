@@ -1,3 +1,4 @@
+lib/sandbox.py usr/lib/python3/dist-packages/vyatta
 scripts/cli-sandbox opt/vyatta/sbin/
 scripts/cli_sandbox_init opt/vyatta/sbin/
 scripts/shared_storage_mount opt/vyatta/sbin/

@@ -15,9 +15,16 @@ import os
 from argparse import ArgumentParser
 import subprocess
 import shutil
+import contextlib
+import glob
+import grp
 import pwd
 import re
+import tempfile
 from vyatta.shared_storage import SharedStorage
+from vyatta.sandbox import format_group_database_entry,  \
+                           format_passwd_database_entry, \
+                           parse_group_database
 
 SANDBOX_DEFAULTS = {
     'DISTDIR': '/var/lib/sandbox',
@@ -130,6 +137,125 @@ def write_command_not_found(chroot):
     except:
         print("Exception when writing {}".format(CNF_FILENAME))
 
+def generate_passwd_database(chroot, pw_entry, base_passwd=None):
+    """
+    Generates a limited /etc/passwd in chroot, overwriting any
+    existing file.
+
+    The user represented by pw_entry is referred to as the
+    "sandboxed user".
+
+    The generated passwd file is guaranteed to contain an
+    entry corresponding to pw_entry.
+
+    base_passwd may optionally be specified as an iterator which
+    returns strings representing lines (entries) of a passwd file.
+
+    All lines from base_passwd are included in the generated passwd
+    file (except any relating to the sandboxed user).
+    """
+    tmp_passwd = tempfile.NamedTemporaryFile(
+        'w', dir=chroot, delete=False)
+    with tmp_passwd:
+        if base_passwd is not None:
+            for line in base_passwd:
+                if line.startswith(pw_entry.pw_name + ':'):
+                    continue
+                tmp_passwd.write(line)
+
+        print(format_passwd_database_entry(pw_entry), file=tmp_passwd)
+        os.chmod(tmp_passwd.file.fileno(), 0o0644)
+
+    os.rename(tmp_passwd.name, os.path.join(chroot, 'etc', 'passwd'))
+
+def generate_group_database(chroot, pw_entry, base_group=None):
+    """
+    Generates a limited /etc/group in chroot, overwriting any
+    existing file.
+
+    The user represented by pw_entry is referred to as the
+    "sandboxed user".
+
+    The generated group file is guaranteed to contain entries
+    corresponding to the primary and supplementary groups of the
+    sandboxed user.
+
+    base_group may optionally be specified as an iterator which
+    returns strings representing lines (entries) of a group file.
+
+    All lines from base_groups are included in the generated group
+    file as provided (including any member information). If the
+    sandboxed user is a member of any of these groups, the entry
+    will be updated to indicate this.
+
+    The entry for any of the sandboxed user's groups, which are not
+    returned from base_groups, will show the user as the only member.
+    """
+    user_groups = {g : grp.getgrgid(g) for g in os.getgrouplist(
+        pw_entry.pw_name, pw_entry.pw_gid)}
+
+    tmp_group = tempfile.NamedTemporaryFile(
+        'w', dir=chroot, delete=False)
+    with tmp_group:
+        # Write all base groups including any existing
+        # members. If the sandboxed user should be a member
+        # ensure this is recorded.
+        if base_group is not None:
+            for group in parse_group_database(base_group):
+                try:
+                    user_group = user_groups[group.gr_gid]
+                    if user_group.gr_name != group.gr_name:
+                        # In the unlikely event of a GID being assigned to
+                        # multiple groups, prefer the group from the system
+                        # database.
+                        print("Group ID {} collision - using {} over {}".format(
+                            group.gr_gid, user_group.gr_name, group.gr_name))
+                        continue
+
+                    if pw_entry.pw_name not in group.gr_mem:
+                        user_groups.pop(group.gr_gid)
+                        group.gr_mem.append(pw_entry.pw_name)
+                except KeyError:
+                    pass
+
+                print(format_group_database_entry(group), file=tmp_group)
+
+        # Add any groups the user is a member of which haven't
+        # already been processed, ensuring the sandboxed user is
+        # the only member.
+        for group in user_groups.values():
+            group.gr_mem.clear()
+            group.gr_mem.append(pw_entry.pw_name)
+            print(format_group_database_entry(group), file=tmp_group)
+
+        os.chmod(tmp_group.file.fileno(), 0o0644)
+
+    os.rename(tmp_group.name, os.path.join(chroot, 'etc', 'group'))
+
+def generate_user_databases(chroot, pw_entry,
+                            base_passwd=None,
+                            base_group=None):
+    """
+    Generates limited /etc/passwd and /etc/group databases
+    in chroot, overwriting any existing files, and also
+    removing any backup or shadow databases.
+
+    See generate_passwd_database() and generate_group_database()
+    for more details.
+    """
+
+    # Discard existing user/group backup and shadow
+    # databases as they are not required.
+    # Do not remove 'passwd' and 'group' as these may be
+    # in use if the sandbox is running.
+    for f in ("passwd-", "group-", "shadow*", "gshadow*"):
+        for p in glob.glob(os.path.join(chroot, 'etc', f)):
+            if os.path.exists(p):
+                os.remove(p)
+
+    generate_passwd_database(chroot, pw_entry, base_passwd)
+    generate_group_database(chroot, pw_entry, base_group)
+
 
 class UserSandBox:
     """Sandbox class"""
@@ -204,6 +330,24 @@ class UserSandBox:
             for moved_mount in self.get_moved_mounts():
                 fout.write(bindfmt.format(moved_mount))
 
+    def _generate_user_databases(self):
+        # Use any existing /etc/passwd from the pristine chroot to
+        # determine the base system users to setup in the sandbox.
+        try:
+            base_passwd = open(os.path.join(self.DISTDIR, 'etc', 'passwd'), 'r')
+        except OSError:
+            base_passwd = contextlib.nullcontext([])
+
+        # Similarly use any existing /etc/group to determine the
+        # base system groups to setup.
+        try:
+            base_groups = open(os.path.join(self.DISTDIR, 'etc', 'group'), 'r')
+        except OSError:
+            base_groups = contextlib.nullcontext([])
+
+        with base_passwd as bp_iter, base_groups as bg_iter:
+            generate_user_databases(self.root, self.pw_entry, bp_iter, bg_iter)
+
     def create_sandbox(self):
         """create and setup sandbox rootfs"""
         self.edit_nspawn_template()
@@ -225,6 +369,7 @@ class UserSandBox:
                   self.root,
                  ]
         sb_run(mntcmd)
+        self._generate_user_databases()
         remove_native_op_cmds(self.root)
         write_command_not_found(self.root)
         shutil.copy2(self.INIT2, self.root)
@@ -242,13 +387,15 @@ class UserSandBox:
 
     def update_sandbox(self):
         """
-        Updates an existing sandbox.
+        Updates an existing sandbox:
+            * re-generate the sandbox user databases
 
         The mtime of the sandbox's "ready" file is
         updated on completion of the update.
         """
         ready_file = os.path.join(self.topdir, "ready")
         if os.path.exists(ready_file):
+            self._generate_user_databases()
             os.utime(ready_file)
 
     def destroy_sandbox(self):

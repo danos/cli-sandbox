@@ -7,10 +7,6 @@ PrivateUsers=no
 [Files]
 BindReadOnly=/run/vyatta/configd
 BindReadOnly=/run/vyatta/opd
-BindReadOnly=/etc/passwd
-BindReadOnly=/etc/shadow
-BindReadOnly=/etc/group
-BindReadOnly=/etc/gshadow
 BindReadOnly=/etc/profile
 BindReadOnly=/etc/profile.d
 
