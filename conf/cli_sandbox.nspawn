@@ -13,7 +13,6 @@ BindReadOnly=/etc/group
 BindReadOnly=/etc/gshadow
 BindReadOnly=/etc/profile
 BindReadOnly=/etc/profile.d
-BindReadOnly=/etc/nsswitch.conf
 
 [Network]
 Private=yes

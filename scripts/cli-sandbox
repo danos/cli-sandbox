@@ -186,14 +186,6 @@ class UserSandBox:
         return [bind_str(os.path.abspath(x))
                 for x in self.MOVED_MOUNTS if os.path.exists(x)]
 
-    def get_sss_pipes_dir(self):
-        """ Returns the sss/pipes directory to use, based on which exists """
-        for d in ("/run/sss/pipes", "/var/lib/sss/pipes"):
-            if os.path.exists(d):
-                return d
-
-        return ""
-
     def edit_nspawn_template(self):
         """create nspawn settings file.
         Add extra bind mounts for Home directory and shared-storage mounts
@@ -203,7 +195,6 @@ class UserSandBox:
             os.mkdir(os.path.dirname(self.settings), 0o755)
         shutil.copy2(self.NSPAWN_TEMPLATE, self.settings)
         bindfmt = "Bind={}\n"
-        robindfmt = "BindReadOnly={}\n"
         with open(self.settings, 'a') as fout:
             fout.write("\n[Files]\n")
             fout.write(bindfmt.format(self.pw_entry.pw_dir))
@@ -211,10 +202,6 @@ class UserSandBox:
                 fout.write(bindfmt.format(shared_dir))
             for moved_mount in self.get_moved_mounts():
                 fout.write(bindfmt.format(moved_mount))
-
-            sss_pipes_dir = self.get_sss_pipes_dir()
-            if sss_pipes_dir:
-                fout.write(robindfmt.format(sss_pipes_dir))
 
     def create_sandbox(self):
         """create and setup sandbox rootfs"""
