@@ -353,7 +353,7 @@ class UserSandBox:
         self.edit_nspawn_template()
         os.makedirs(self.topdir)
         mntcmd = ['/bin/mount', '-t', 'tmpfs',
-                  '-o', 'size=' + ROOT_TMP_FS_MAX,
+                  '-o', 'size=' + ROOT_TMP_FS_MAX + ',mode=0755',
                   'tmpfs', self.topdir
                  ]
         sb_run(mntcmd)
