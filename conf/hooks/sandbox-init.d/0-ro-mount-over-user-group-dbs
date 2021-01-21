@@ -1,0 +1,4 @@
+#!/bin/sh
+
+mount --bind -o ro /etc/passwd /etc/passwd
+mount --bind -o ro /etc/group /etc/group
