@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, AT&T Intellectual Property. All rights reserved.
+ * Copyright (c) 2018-2021, AT&T Intellectual Property. All rights reserved.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -654,6 +654,7 @@ get_sandbox(pam_handle_t * pamh, const char *mach, const char *svc,
 	}
 
 	do {
+		free_sandbox_info(info);
 		r = get_machine_info(pamh, bus, mach, info);
 		/* No device (ENXIO) is expected on 1st access to sandbox */
 		if (r && r != -ENXIO)
