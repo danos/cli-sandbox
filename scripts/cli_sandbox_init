@@ -44,9 +44,26 @@ wait_for_processes()
 	return 1
 }
 
-# wait until all processes left the sandbox
-# returns success (0) if there are processes
-# and fails when there are no processes.
+recent_new_session()
+{
+	# How long (seconds) from opening before we consider any session
+	# to no longer be "recent".
+	local recent_timeout=10
+
+	# When a new session opens it updates the mtime of /run/ready so
+	# we use this to determine when a session was last opened.
+	local -i ready_mtime
+	local -i allowed_ready_mtime
+
+	ready_mtime="$(stat /run/ready --format %Y)"
+	allowed_ready_mtime=$(( $(date +%s) - recent_timeout ))
+	[ "$ready_mtime" -ge "$allowed_ready_mtime" ] && return 0
+	return 1
+}
+
+# wait until all processes left the sandbox.
+# returns when there are no processes and no sessions
+# have been opened recently.
 # takes two arguments delay and count
 wait_for_idle()
 {
@@ -60,9 +77,19 @@ wait_for_idle()
 		while check_processes /proc; do
 			sleep "${delay}"
 		done
+
+		# This keeps the sandbox active in scenarios where many short
+		# lived sessions are opened, whose processes might only be alive
+		# in between the idle checks (and will therefore be un-detected).
+		if recent_new_session; then
+			sleep "${delay}"
+			continue
+		fi
+
 		count=${idle_count}
 		while :; do
 			check_processes /proc && break
+			recent_new_session && break
 			echo "No process count=${count}"
 			count=$(( count - 1 ))
 			(( count == 0 )) && return

@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <systemd/sd-bus.h>
+#include <utime.h>
 
 #define PAM_SM_SESSION
 #define PAM_SM_AUTH
@@ -246,6 +247,12 @@ static int enter_sandbox(pam_handle_t * pamh, const struct passwd *pw)
 		pam_syslog(pamh, LOG_ERR, "failed to enter sandbox - sandbox not ready");
 		goto out;
 	}
+
+	/* Touch the ready file so cli_sandbox_init knows a new session is opening. */
+	r = utime("/run/ready", NULL);
+	if (r < 0)
+		pam_syslog(pamh, LOG_WARNING,
+				"failed to touch /run/ready: %s", strerror(errno));
 
 	if (hostname[0] != '\0') {
 		sandbox_set_hostname(pamh, hostname);
