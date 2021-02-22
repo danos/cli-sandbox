@@ -23,8 +23,7 @@ Description: Python3 module for managing shared storage
 
 Package: cli-sandbox
 Architecture: all
-Breaks: opc (<< 1.15),
- vyatta-sssd-cfg (<< 0.54)
+Breaks: vyatta-sssd-cfg (<< 0.54)
 Depends: systemd-container,
  python3 (>= 3.5),
  python3-shared-storage,

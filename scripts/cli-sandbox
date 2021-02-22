@@ -35,7 +35,7 @@ SANDBOX_DEFAULTS = {
     'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
     'SETTINGS_DIR': '/run/systemd/nspawn',
     'ENVFILE': 'cli-sandbox.env',
-    'MOVED_MOUNTS': ['/run/utmp', '/var/log/wtmp', '/var/log/btmp']
+    'MOVED_MOUNTS': ['/dev/pts', '/run/utmp', '/var/log/wtmp', '/var/log/btmp']
     }
 
 # ENVFILE vars

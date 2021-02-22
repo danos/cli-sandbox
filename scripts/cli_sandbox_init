@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2018, 2020-2021 AT&T intellectual property.
+# Copyright (c) 2018, 2020 AT&T intellectual property.
 # All rights reserved
 #
 # SPDX-License-Identifier: GPL-2.0-only
@@ -162,7 +162,7 @@ IDLE_CHECK_COUNT=2
 HOOKS_DIR="/etc/cli-sandbox/hooks/sandbox-init.d"
 
 # Move mounts
-move_mounts /run/utmp /var/log/wtmp /var/log/btmp
+move_mounts /dev/pts /run/utmp /var/log/wtmp /var/log/btmp
 
 # revert back the hostname
 check_and_sethostname
