@@ -1,3 +1,31 @@
+cli-sandbox (0.23) unstable; urgency=medium
+
+  [ Duncan Eastoe ]
+  * cli-sandbox: undefined variable cnf_filename
+  * cli-sandbox: unused variable e
+  * cli-sandbox: Add environment argument to sb_run()
+  * cli-sandbox: define common environment values
+  * Add support for sandbox post create hooks
+  * Add support for sandbox init hooks
+  * Remove SSSD specific operations
+  * cli-sandbox: use common vars in cli-sandbox.env
+  * Add support for sandbox post start hooks
+  * Create "/run/cli-sandbox/<user>/ready" on start
+  * cli-sandbox: Add sandbox update/reload support
+  * pam_sandbox.c: wait_for_file() until mtime changes
+  * pam_sandbox.c: reload sandbox on new session
+  * cli-sandbox: generate /etc/passwd and /etc/group
+  * RO bind mount over /etc/passwd and /etc/group
+  * cli-sandbox: restrict perms on per-user "top" dir
+  * cli-sandbox: don't bind mount host /dev/pts
+  * pam_sandbox: free_sandbox_info() before get_machine_info()
+  * cli_sandbox_init: session based keepalive
+
+  [ Nicholas Brown ]
+  * Revert "cli-sandbox: don't bind mount host /dev/pts"
+
+ -- Nicholas Brown <nick.brown@att.com>  Mon, 22 Feb 2021 22:21:43 +0000
+
 cli-sandbox (0.22) unstable; urgency=medium
 
   * conf: remove default locale from bind mounts
