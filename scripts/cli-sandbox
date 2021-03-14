@@ -33,6 +33,8 @@ SANDBOX_DEFAULTS = {
     'INIT_HOOKS_DIR': '/etc/cli-sandbox/hooks/sandbox-init.d',
     'POST_CREATE_HOOKS_DIR': '/etc/cli-sandbox/hooks/sandbox-post-create.d',
     'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
+    'PAMD_VYATTA_PASSWD': '/etc/pam.d/passwd.vyatta',
+    'PAMD_PASSWD': 'etc/pam.d/passwd',
     'SETTINGS_DIR': '/run/systemd/nspawn',
     'ENVFILE': 'cli-sandbox.env',
     'MOVED_MOUNTS': ['/dev/pts', '/run/utmp', '/var/log/wtmp', '/var/log/btmp']
@@ -55,6 +57,9 @@ ROOT_TMP_FS_MAX = '1m'
 
 # Used by call to sb_run(cmd, IGNORE) when we want ignore the results of a command
 IGNORE = True
+
+# User for password renewal
+VYATTAPWDCFG = 'vyattapwdcfg'
 
 # command-not-found handler script variables for sandbox
 # CNF script is called:
@@ -137,7 +142,7 @@ def write_command_not_found(chroot):
     except:
         print("Exception when writing {}".format(CNF_FILENAME))
 
-def generate_passwd_database(chroot, pw_entry, base_passwd=None):
+def generate_passwd_database(chroot, pw_entry, pwdcfg_entry, base_passwd=None):
     """
     Generates a limited /etc/passwd in chroot, overwriting any
     existing file.
@@ -161,14 +166,17 @@ def generate_passwd_database(chroot, pw_entry, base_passwd=None):
             for line in base_passwd:
                 if line.startswith(pw_entry.pw_name + ':'):
                     continue
+                if line.startswith(pwdcfg_entry.pw_name + ':'):
+                    continue
                 tmp_passwd.write(line)
 
         print(format_passwd_database_entry(pw_entry), file=tmp_passwd)
+        print(format_passwd_database_entry(pwdcfg_entry), file=tmp_passwd)
         os.chmod(tmp_passwd.file.fileno(), 0o0644)
 
     os.rename(tmp_passwd.name, os.path.join(chroot, 'etc', 'passwd'))
 
-def generate_group_database(chroot, pw_entry, base_group=None):
+def generate_group_database(chroot, pw_entry, pwdcfg_entry, base_group=None):
     """
     Generates a limited /etc/group in chroot, overwriting any
     existing file.
@@ -193,6 +201,8 @@ def generate_group_database(chroot, pw_entry, base_group=None):
     """
     user_groups = {g : grp.getgrgid(g) for g in os.getgrouplist(
         pw_entry.pw_name, pw_entry.pw_gid)}
+    pcfg_user_groups = {g : grp.getgrgid(g) for g in os.getgrouplist(
+        pwdcfg_entry.pw_name, pwdcfg_entry.pw_gid)}
 
     tmp_group = tempfile.NamedTemporaryFile(
         'w', dir=chroot, delete=False)
@@ -228,13 +238,17 @@ def generate_group_database(chroot, pw_entry, base_group=None):
             group.gr_mem.append(pw_entry.pw_name)
             print(format_group_database_entry(group), file=tmp_group)
 
+        for group in pcfg_user_groups.values():
+            group.gr_mem.clear()
+            group.gr_mem.append(pwdcfg_entry.pw_name)
+            print(format_group_database_entry(group), file=tmp_group)
+
         os.chmod(tmp_group.file.fileno(), 0o0644)
 
     os.rename(tmp_group.name, os.path.join(chroot, 'etc', 'group'))
 
-def generate_user_databases(chroot, pw_entry,
-                            base_passwd=None,
-                            base_group=None):
+def generate_user_databases(chroot, pw_entry, pwdcfg_entry,
+                            base_passwd=None, base_group=None):
     """
     Generates limited /etc/passwd and /etc/group databases
     in chroot, overwriting any existing files, and also
@@ -253,8 +267,8 @@ def generate_user_databases(chroot, pw_entry,
             if os.path.exists(p):
                 os.remove(p)
 
-    generate_passwd_database(chroot, pw_entry, base_passwd)
-    generate_group_database(chroot, pw_entry, base_group)
+    generate_passwd_database(chroot, pw_entry, pwdcfg_entry, base_passwd)
+    generate_group_database(chroot, pw_entry, pwdcfg_entry, base_group)
 
 
 class UserSandBox:
@@ -272,6 +286,11 @@ class UserSandBox:
             uid = self.pw_entry.pw_uid
         finally:
             self.machine = gen_machine_name(uid)
+
+        try:
+            self.pwdcfg_entry = pwd.getpwnam(VYATTAPWDCFG)
+        except KeyError:
+            self.pwdcfg_entry = None
 
         self.topdir = os.path.join(self.RUNDIR, name)
         self.settings = os.path.join(self.SETTINGS_DIR, self.machine + '.nspawn')
@@ -346,7 +365,7 @@ class UserSandBox:
             base_groups = contextlib.nullcontext([])
 
         with base_passwd as bp_iter, base_groups as bg_iter:
-            generate_user_databases(self.root, self.pw_entry, bp_iter, bg_iter)
+            generate_user_databases(self.root, self.pw_entry, self.pwdcfg_entry, bp_iter, bg_iter)
 
     def create_sandbox(self):
         """create and setup sandbox rootfs"""
@@ -372,6 +391,9 @@ class UserSandBox:
         self._generate_user_databases()
         remove_native_op_cmds(self.root)
         write_command_not_found(self.root)
+        passwd = os.path.join(self.root, self.PAMD_PASSWD)
+        shutil.copy2(self.PAMD_VYATTA_PASSWD, passwd)
+        os.chmod(passwd, 0o644)
         shutil.copy2(self.INIT2, self.root)
         os.chmod(os.path.join(self.root, os.path.basename(self.INIT2)), 0o755)
         os.mkdir(os.path.join(self.root, '.mounts'), 0o700)

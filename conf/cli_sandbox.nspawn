@@ -9,6 +9,9 @@ BindReadOnly=/run/vyatta/configd
 BindReadOnly=/run/vyatta/opd
 BindReadOnly=/etc/profile
 BindReadOnly=/etc/profile.d
+BindReadOnly=/lib/x86_64-linux-gnu/security/pam_vyatta_passwd.so
+BindReadOnly=/var/cache/cracklib
+BindReadOnly=/etc/security/pwquality.conf
 
 [Network]
 Private=yes
