@@ -1,3 +1,10 @@
+cli-sandbox (0.24) unstable; urgency=medium
+
+  [ Sharmila Podury ]
+  * Unable to renew password when expired
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Fri, 14 May 2021 09:09:34 -0700
+
 cli-sandbox (0.23) unstable; urgency=medium
 
   [ Duncan Eastoe ]
