@@ -33,8 +33,6 @@ SANDBOX_DEFAULTS = {
     'INIT_HOOKS_DIR': '/etc/cli-sandbox/hooks/sandbox-init.d',
     'POST_CREATE_HOOKS_DIR': '/etc/cli-sandbox/hooks/sandbox-post-create.d',
     'INIT2': '/opt/vyatta/sbin/cli_sandbox_init',
-    'PAMD_VYATTA_PASSWD': '/etc/pam.d/passwd.vyatta',
-    'PAMD_PASSWD': 'etc/pam.d/passwd',
     'SETTINGS_DIR': '/run/systemd/nspawn',
     'ENVFILE': 'cli-sandbox.env',
     'MOVED_MOUNTS': ['/dev/pts', '/run/utmp', '/var/log/wtmp', '/var/log/btmp']
@@ -391,9 +389,6 @@ class UserSandBox:
         self._generate_user_databases()
         remove_native_op_cmds(self.root)
         write_command_not_found(self.root)
-        passwd = os.path.join(self.root, self.PAMD_PASSWD)
-        shutil.copy2(self.PAMD_VYATTA_PASSWD, passwd)
-        os.chmod(passwd, 0o644)
         shutil.copy2(self.INIT2, self.root)
         os.chmod(os.path.join(self.root, os.path.basename(self.INIT2)), 0o755)
         os.mkdir(os.path.join(self.root, '.mounts'), 0o700)
