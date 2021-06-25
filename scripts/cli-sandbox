@@ -341,7 +341,8 @@ class UserSandBox:
         bindfmt = "Bind={}\n"
         with open(self.settings, 'a') as fout:
             fout.write("\n[Files]\n")
-            fout.write(bindfmt.format(self.pw_entry.pw_dir))
+            if os.path.isdir(self.pw_entry.pw_dir):
+                fout.write(bindfmt.format(self.pw_entry.pw_dir))
             for shared_dir in get_current_shares():
                 fout.write(bindfmt.format(shared_dir))
             for moved_mount in self.get_moved_mounts():
