@@ -1,3 +1,9 @@
+cli-sandbox (0.26) unstable; urgency=medium
+
+  * scripts: only bind existing home directory
+
+ -- Nachiketa Prachanda <nprachan@vyatta.att-mail.com>  Fri, 16 Jul 2021 12:46:02 -0700
+
 cli-sandbox (0.25) unstable; urgency=medium
 
   [ Sharmila Podury ]
